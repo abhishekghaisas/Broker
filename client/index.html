@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Router Test</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; background: #f4f4f9; }
+        button { padding: 10px 15px; margin-right: 10px; cursor: pointer; }
+        #log { margin-top: 20px; background: #222; color: #0f0; padding: 15px; height: 300px; overflow-y: scroll; font-family: monospace; }
+    </style>
+</head>
+<body>
+    <h2>Edge Client: WebSocket Tester</h2>
+    <button id="connectBtn">1. Connect</button>
+    <button id="sendBtn" disabled>2. Send Mock Chunk</button>
+    <button id="disconnectBtn" disabled>3. Disconnect</button>
+
+    <div id="log">System Ready...<br></div>
+
+    <script src="vad.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

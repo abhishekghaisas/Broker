@@ -1,0 +1,7 @@
+asyncio
+fastapi
+uvicorn
+websockets
+wsproto
+anthropic
+mcp
