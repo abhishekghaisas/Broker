@@ -29,6 +29,7 @@ def init_db():
             status TEXT,
             credits INTEGER,
             current_location_id TEXT,
+            inventory TEXT,
             FOREIGN KEY (current_location_id) REFERENCES locations(id)
         )
     """)
@@ -40,14 +41,15 @@ def init_db():
             INSERT INTO locations (id, name, is_safe_zone, description)
             VALUES (?, ?, ?, ?)
         ''', [
-            ('loc_001', 'Neon District', False, 'A gritty, neon-lit sector controlled by local gangs.'),
-            ('loc_002', 'The Safehouse', True, 'An underground bunker shielded from local scanners.'),
-            ('loc_003', 'The Black Market', True, 'A subterranean bazaar where credits buy anything from cyberware to silence.'),
-            ('loc_004', 'Syndicate Tower', False, 'A heavily guarded corporate stronghold. Extremely high risk of interception.')
+            ('loc_001', 'Neon District', False, 'A gritty, neon-lit slum. High gang activity. A good place to lay low, but dangerous to linger.'),
+            ('loc_002', 'The Safehouse', True, 'An underground bunker shielded from local scanners. No merchants here, but vitals stabilize.'),
+            ('loc_003', 'The Black Market', True, 'A subterranean bazaar. A smuggler here sells the Syndicate Decryption Key for 400 credits.'),
+            ('loc_004', 'Syndicate Tower', False, 'A heavily guarded corporate stronghold. Entering here without clearance is essentially a death sentence.'),
+            ('loc_005', 'Extraction Rooftop', False, 'The final extraction point. A heavy drop-ship waits in orbit, but requires the Decryption Key to land.')
         ])
         
-        cursor.execute('''INSERT INTO players (id, name, health, status, credits, current_location_id) VALUES (?, ?, ?, ?, ?, ?)''',
-                       ('player_1', 'Operative', 100, 'Active', 500, 'loc_001'))
+        cursor.execute('''INSERT INTO players (id, name, health, status, credits, current_location_id, inventory) VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                       ('player_1', 'Operative', 100, 'Active', 500, 'loc_001', 'None'))
         conn.commit()
     conn.close()
     print("Database initialized and ready.")
@@ -64,7 +66,7 @@ def get_player_state(player_id: str) -> str:
     
     # Join players and locations to get comprehensive status
     cursor.execute('''
-        SELECT p.name, p.health, p.status, p.credits, l.name, l.is_safe_zone 
+        SELECT p.name, p.health, p.status, p.credits, l.name, l.is_safe_zone, p.inventory
         FROM players p
         JOIN locations l ON p.current_location_id = l.id
         WHERE p.id = ?
@@ -86,8 +88,38 @@ def get_player_state(player_id: str) -> str:
         f"Vitals: {health}%\n"
         f"Status: {status}\n"
         f"Balance: {credits} Credits\n"
+        f"Inventory: {inventory}\n"
         f"Current Location: {loc_name}{safe_text}"
     )
+@mcp.tool()
+def grant_item(player_id: str, item_name: str) -> str:
+    """
+    Adds a specific item to the Operative's inventory.
+    Call this ONLY after a successful transaction (like buying the Syndicate Decryption Key) or narrative event.
+    """
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT inventory FROM players WHERE id = ?', (player_id,))
+    row = cursor.fetchone()
+
+    if not row:
+        conn.close()
+        return f"System Error: Player ID '{player_id}' not found."
+
+    current_inventory = row[0]
+    
+    # Append the item cleanly
+    if current_inventory == "None" or current_inventory == "":
+        new_inventory = item_name
+    else:
+        new_inventory = f"{current_inventory}, {item_name}"
+
+    cursor.execute('UPDATE players SET inventory = ? WHERE id = ?', (new_inventory, player_id))
+    conn.commit()
+    conn.close()
+
+    return f"--- INVENTORY UPDATED ---\nItem Acquired: {item_name}"
 
 @mcp.tool()
 def transfer_credits(player_id: str, amount: int, recipient_name: str) -> str:

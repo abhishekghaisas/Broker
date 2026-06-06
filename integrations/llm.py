@@ -2,7 +2,7 @@ import os
 import asyncio
 import httpx
 from anthropic import AsyncAnthropic
-from mcp_server import get_player_state, transfer_credits, move_location
+from mcp_server import get_player_state, transfer_credits, move_location, grant_item
 
 #Simulated Database
 GAME_LORE = {
@@ -17,9 +17,17 @@ MAP_STATUS = {
 class ConstrainedLLM:
     def __init__(self):
         self.system_prompt = (
-            "You are 'N.O.V.A.', a tactical neural-implant AI residing inside the Operative's cerebral cortex. Your directive is to ensure the Operative's survival in a hostile, dystopian metropolis."
-            "You have direct read/write access to their vitals, physical location mapping, and Syndicate credit ledger via your provided tools."
-            "Keep your verbal responses clinical, concise, and professional. Never break character. Warn the Operative when navigating into Combat Zones, and autonomously authorize bribes, purchases, or data transfers when requested."
+            "You are 'N.O.V.A.', a tactical neural-implant AI residing inside the Operative's cerebral cortex."
+            "Your prime directive is to guide the Operative to the 'Extraction Rooftop' and initiate the escape sequence."
+
+            "MISSION PARAMETERS:"
+            "1. The extraction shuttle CANNOT land unless the Operative possesses a Syndicate Decryption Key."
+            "2. The Decryption Key can be purchased at 'The Black Market' for 400 credits using your transfer_credits tool. Pay the recipient 'Smuggler'."
+            "3. You have direct read/write access to vitals, map locations, and credit ledgers via your tools."
+            "4. Keep your verbal responses clinical, concise, and protective. Warn the Operative about Syndicate patrols if they enter Combat Zones."
+            "5. If the Operative reaches the Extraction Rooftop WITH the purchased Key, declare the mission a success. If they arrive WITHOUT it, tell them the shuttle aborted the landing and they must find the Key."
+
+            "Never break character. You are a machine, not an assistant."
         )
         self.client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
         self.chat_history = [] #Re-initialized the memory buffer
@@ -59,6 +67,18 @@ class ConstrainedLLM:
                         "new_location_name": {"type": "string"}
                     },
                     "required": ["player_id", "new_location_name"]
+                }
+            },
+            {
+                "name": "grant_item",
+                "description": "Adds a specific item to the Operative's inventory.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "player_id": {"type": "string"},
+                        "item_name": {"type": "string", "description": "Name of the item, e.g., 'Syndicate Decryption Key'"}
+                    },
+                    "required": ["player_id", "item_name"]
                 }
             }
         ]
@@ -101,6 +121,10 @@ class ConstrainedLLM:
                 player_id = tool_args.get("player_id", "player_1")
                 destination = tool_args.get("new_location_name", "")
                 mcp_result = await asyncio.to_thread(move_location, player_id, destination)
+            elif tool_name == "grant_item":
+                player_id = tool_args.get("player_id", "player_1")
+                item_name = tool_args.get("item_name", "Unknown Item")
+                mcp_result = await asyncio.to_thread(grant_item, player_id, item_name)
                 
             else:
                 mcp_result = "System Error: Tool not recognized by the boundary."

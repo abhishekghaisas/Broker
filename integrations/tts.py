@@ -1,6 +1,8 @@
 import os
 import asyncio
 import httpx
+import re
+
 
 class DeepgramTTS:
     def __init__(self):
@@ -21,21 +23,23 @@ class DeepgramTTS:
                 if not text_chunk:
                     continue
 
-                print(f"🎙️ [Cloud TTS] Synthesizing: '{text_chunk}'")
+                clean_chunk = re.sub(r'[*_#]', '', text_chunk)
+
+                print(f"🎙️ [Cloud TTS] Synthesizing: '{clean_chunk}'")
                 
                 headers = {
                     "Authorization": f"Token {self.api_key}",
                     "Content-Type": "application/json"
                 }
-                payload = {"text": text_chunk}
+                payload = {"text": clean_chunk}
 
                 try:
-                    # Request the audio and read the entire MP3 buffer (takes ~100-200ms)
+                    #Request the audio and read the entire MP3 buffer (takes ~100-200ms)
                     response = await client.post(self.url, headers=headers, json=payload, timeout=10.0)
                     response.raise_for_status()
                     
                     audio_data = response.content
-                    # Send the complete MP3 down the WebSocket to the browser
+                    #Send the complete MP3 down the WebSocket to the browser
                     await audio_out_queue.put(audio_data)
                             
                 except Exception as e:
