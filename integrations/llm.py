@@ -2,8 +2,9 @@ import os
 import asyncio
 import httpx
 from anthropic import AsyncAnthropic
+from mcp_server import get_player_state, transfer_credits, move_location
 
-# Simulated Database
+#Simulated Database
 GAME_LORE = {
     "alan": "Alan is a rogue synth who operates in the Neon District. He currently owes a massive debt to the Syndicate.",
     "syndicate": "A ruthless corporate crime organization that controls the black market weapon trade."
@@ -16,32 +17,48 @@ MAP_STATUS = {
 class ConstrainedLLM:
     def __init__(self):
         self.system_prompt = (
-            "You are a Voice AI embedded in a proprietary game environment. "
-            "CRITICAL DIRECTIVE: You have ZERO built-in knowledge of the game's lore, characters, or map status. "
-            "You MUST use the provided tools to look up ANY contextual information before answering. "
-            "If a user asks about a character or location, call the tool. NEVER guess or hallucinate details. "
-            "Keep your responses concise, conversational, and under 2 sentences."
+            "You are 'N.O.V.A.', a tactical neural-implant AI residing inside the Operative's cerebral cortex. Your directive is to ensure the Operative's survival in a hostile, dystopian metropolis."
+            "You have direct read/write access to their vitals, physical location mapping, and Syndicate credit ledger via your provided tools."
+            "Keep your verbal responses clinical, concise, and professional. Never break character. Warn the Operative when navigating into Combat Zones, and autonomously authorize bribes, purchases, or data transfers when requested."
         )
         self.client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-        self.chat_history = [] # Re-initialized the memory buffer
+        self.chat_history = [] #Re-initialized the memory buffer
         
         self.tools = [
             {
-                "name": "get_character_lore",
-                "description": "Fetch proprietary lore and current relational status for a specific character.",
+                "name": "get_player_state",
+                "description": "Retrieves the current status, health, credits, and location of the Operative.",
                 "input_schema": {
                     "type": "object",
-                    "properties": {"character_name": {"type": "string"}},
-                    "required": ["character_name"]
+                    "properties": {
+                        "player_id": {"type": "string", "description": "The ID of the player, e.g., 'player_1'"}
+                    },
+                    "required": ["player_id"]
                 }
             },
             {
-                "name": "get_map_status",
-                "description": "Check the current navigation and security status of a specific map location.",
+                "name": "transfer_credits",
+                "description": "Transfers Syndicate Credits from the Operative's ledger to external parties. Use this to pay off bounties, buy gear, or bribe.",
                 "input_schema": {
                     "type": "object",
-                    "properties": {"location": {"type": "string"}},
-                    "required": ["location"]
+                    "properties": {
+                        "player_id": {"type": "string"},
+                        "amount": {"type": "integer", "description": "Amount to transfer"},
+                        "recipient_name": {"type": "string", "description": "Who is receiving the credits"}
+                    },
+                    "required": ["player_id", "amount", "recipient_name"]
+                }
+            },
+            {
+                "name": "move_location",
+                "description": "Reroutes the Operative's physical coordinates. Valid destinations: Neon District, The Safehouse, The Black Market, Syndicate Tower.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "player_id": {"type": "string"},
+                        "new_location_name": {"type": "string"}
+                    },
+                    "required": ["player_id", "new_location_name"]
                 }
             }
         ]
@@ -49,7 +66,7 @@ class ConstrainedLLM:
     async def generate_response(self, text_prompt: str, token_queue: asyncio.Queue):
         print(f"🧠 [LLM Governed] Analyzing intent: {text_prompt}")
         
-        # 1. Append new prompt and prune context bloat (max 4 messages / 2 turns)
+        #Append new prompt and prune context bloat (max 4 messages / 2 turns)
         self.chat_history.append({"role": "user", "content": text_prompt})
         if len(self.chat_history) > 4:
             self.chat_history = self.chat_history[-4:]
@@ -69,17 +86,26 @@ class ConstrainedLLM:
             
             print(f"🔒 [Boundary Event] Claude requested MCP tool: {tool_name} with {tool_args}")
             
-            # 2. Prevent GIL Blocking via asyncio.to_thread
-            if tool_name == "get_character_lore":
-                char_name = tool_args.get("character_name", "").lower()
-                mcp_result = await asyncio.to_thread(GAME_LORE.get, char_name, f"No lore found for {char_name}.")
-            elif tool_name == "get_map_status":
-                loc_name = tool_args.get("location", "").lower().replace("_", " ")
-                mcp_result = await asyncio.to_thread(MAP_STATUS.get, loc_name, f"No map data found for {loc_name}.")
-            else:
-                mcp_result = "Tool not recognized by the boundary."
+            #Prevent GIL Blocking via asyncio.to_thread
+            if tool_name == "get_player_state":
+                player_id = tool_args.get("player_id", "player_1")
+                mcp_result = await asyncio.to_thread(get_player_state, player_id)
                 
-            print(f"🛡️ [MCP Return] {mcp_result}")
+            elif tool_name == "transfer_credits":
+                player_id = tool_args.get("player_id", "player_1")
+                amount = tool_args.get("amount", 0)
+                recipient = tool_args.get("recipient_name", "Unknown")
+                mcp_result = await asyncio.to_thread(transfer_credits, player_id, amount, recipient)
+                
+            elif tool_name == "move_location":
+                player_id = tool_args.get("player_id", "player_1")
+                destination = tool_args.get("new_location_name", "")
+                mcp_result = await asyncio.to_thread(move_location, player_id, destination)
+                
+            else:
+                mcp_result = "System Error: Tool not recognized by the boundary."
+                
+            print(f"🛡️ [Database Return] {mcp_result}")
 
             self.chat_history.append({"role": "assistant", "content": response.content})
             self.chat_history.append({
