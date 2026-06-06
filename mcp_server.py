@@ -64,7 +64,7 @@ def get_player_state(player_id: str) -> str:
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     
-    # Join players and locations to get comprehensive status
+    #Join players and locations to get comprehensive status
     cursor.execute('''
         SELECT p.name, p.health, p.status, p.credits, l.name, l.is_safe_zone, p.inventory
         FROM players p
@@ -78,10 +78,10 @@ def get_player_state(player_id: str) -> str:
     if not row:
         return f"System Error: Player ID '{player_id}' not found in the databanks."
         
-    name, health, status, credits, loc_name, is_safe = row
+    name, health, status, credits, loc_name, is_safe, inventory = row
     safe_text = " [SAFE ZONE]" if is_safe else " [COMBAT ZONE]"
     
-    # Return a clean, formatted string for Claude to read and interpret
+    #Return a clean, formatted string for Claude to read and interpret
     return (
         f"--- IDENTITY VERIFIED ---\n"
         f"Operative: {name}\n"
@@ -109,7 +109,7 @@ def grant_item(player_id: str, item_name: str) -> str:
 
     current_inventory = row[0]
     
-    # Append the item cleanly
+    #Append the item cleanly
     if current_inventory == "None" or current_inventory == "":
         new_inventory = item_name
     else:
@@ -134,7 +134,7 @@ def transfer_credits(player_id: str, amount: int, recipient_name: str) -> str:
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
 
-    # 1. Verify current balance
+    #Verify current balance
     cursor.execute('SELECT credits FROM players WHERE id = ?', (player_id,))
     row = cursor.fetchone()
 
@@ -144,12 +144,12 @@ def transfer_credits(player_id: str, amount: int, recipient_name: str) -> str:
 
     current_balance = row[0]
 
-    # 2. Check for sufficient funds
+    #Check for sufficient funds
     if current_balance < amount:
         conn.close()
         return f"Transaction Denied: Insufficient funds. Current balance is {current_balance} credits."
 
-    # 3. Execute the transfer
+    #Execute the transfer
     new_balance = current_balance - amount
     cursor.execute('UPDATE players SET credits = ? WHERE id = ?', (new_balance, player_id))
     
@@ -172,7 +172,7 @@ def move_location(player_id: str, new_location_name: str) -> str:
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
 
-    # 1. Verify the destination exists
+    #Verify the destination exists
     cursor.execute('SELECT id, is_safe_zone FROM locations WHERE LOWER(name) = LOWER(?)', (new_location_name,))
     loc_row = cursor.fetchone()
 
@@ -182,7 +182,7 @@ def move_location(player_id: str, new_location_name: str) -> str:
 
     new_loc_id, is_safe = loc_row
 
-    # 2. Verify the player exists and check their current location
+    #Verify the player exists and check their current location
     cursor.execute('SELECT current_location_id FROM players WHERE id = ?', (player_id,))
     player_row = cursor.fetchone()
 
@@ -194,7 +194,7 @@ def move_location(player_id: str, new_location_name: str) -> str:
         conn.close()
         return f"Navigation Error: You are already at {new_location_name}."
 
-    # 3. Execute the move
+    #Execute the move
     cursor.execute('UPDATE players SET current_location_id = ? WHERE id = ?', (new_loc_id, player_id))
     conn.commit()
     conn.close()

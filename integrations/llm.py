@@ -85,6 +85,10 @@ class ConstrainedLLM:
 
     async def generate_response(self, text_prompt: str, token_queue: asyncio.Queue):
         print(f"🧠 [LLM Governed] Analyzing intent: {text_prompt}")
+
+        #Fetch live database state
+        live_state = await asyncio.to_thread(get_player_state, "player_1")
+        dynamic_prompt = f"{self.system_prompt}\n\nLIVE SYSTEM TELEMETRY(DON NOT READ ALOUD UNLESS ASKED):\n{live_state}"
         
         #Append new prompt and prune context bloat (max 4 messages / 2 turns)
         self.chat_history.append({"role": "user", "content": text_prompt})
@@ -94,53 +98,59 @@ class ConstrainedLLM:
         response = await self.client.messages.create(
             model="claude-haiku-4-5-20251001", 
             max_tokens=256,
-            system=self.system_prompt,
+            system=dynamic_prompt,
             tools=self.tools,
             messages=self.chat_history
         )
 
         if response.stop_reason == "tool_use":
-            tool_use = next(block for block in response.content if block.type == "tool_use")
-            tool_name = tool_use.name
-            tool_args = tool_use.input
+            self.chat_history.append({"role": "assistant", "content": response.content})
+            tool_result_blocks = []
+            for block in response.content:
+                if block.type == "tool_use":
+                    tool_name = block.name
+                    tool_args = block.input
             
-            print(f"🔒 [Boundary Event] Claude requested MCP tool: {tool_name} with {tool_args}")
+                    print(f"🔒 [Boundary Event] Claude requested MCP tool: {tool_name} with {tool_args}")
             
             #Prevent GIL Blocking via asyncio.to_thread
-            if tool_name == "get_player_state":
-                player_id = tool_args.get("player_id", "player_1")
-                mcp_result = await asyncio.to_thread(get_player_state, player_id)
+                    if tool_name == "get_player_state":
+                        player_id = tool_args.get("player_id", "player_1")
+                        mcp_result = await asyncio.to_thread(get_player_state, player_id)
                 
-            elif tool_name == "transfer_credits":
-                player_id = tool_args.get("player_id", "player_1")
-                amount = tool_args.get("amount", 0)
-                recipient = tool_args.get("recipient_name", "Unknown")
-                mcp_result = await asyncio.to_thread(transfer_credits, player_id, amount, recipient)
+                    elif tool_name == "transfer_credits":
+                        player_id = tool_args.get("player_id", "player_1")
+                        amount = tool_args.get("amount", 0)
+                        recipient = tool_args.get("recipient_name", "Unknown")
+                        mcp_result = await asyncio.to_thread(transfer_credits, player_id, amount, recipient)
                 
-            elif tool_name == "move_location":
-                player_id = tool_args.get("player_id", "player_1")
-                destination = tool_args.get("new_location_name", "")
-                mcp_result = await asyncio.to_thread(move_location, player_id, destination)
-            elif tool_name == "grant_item":
-                player_id = tool_args.get("player_id", "player_1")
-                item_name = tool_args.get("item_name", "Unknown Item")
-                mcp_result = await asyncio.to_thread(grant_item, player_id, item_name)
+                    elif tool_name == "move_location":
+                        player_id = tool_args.get("player_id", "player_1")
+                        destination = tool_args.get("new_location_name", "")
+                        mcp_result = await asyncio.to_thread(move_location, player_id, destination)
+                    elif tool_name == "grant_item":
+                        player_id = tool_args.get("player_id", "player_1")
+                        item_name = tool_args.get("item_name", "Unknown Item")
+                        mcp_result = await asyncio.to_thread(grant_item, player_id, item_name)
                 
-            else:
-                mcp_result = "System Error: Tool not recognized by the boundary."
+                    else:
+                        mcp_result = "System Error: Tool not recognized by the boundary."
                 
-            print(f"🛡️ [Database Return] {mcp_result}")
+                    print(f"🛡️ [Database Return] {mcp_result}")
 
-            self.chat_history.append({"role": "assistant", "content": response.content})
-            self.chat_history.append({
-                "role": "user", 
-                "content": [{"type": "tool_result", "tool_use_id": tool_use.id, "content": mcp_result}]
-            })
+                    tool_result_blocks.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": mcp_result
+                    })
+
+            self.chat_history.append({"role": "user", "content": tool_result_blocks})
+            
 
             final_response = await self.client.messages.create(
                 model="claude-haiku-4-5-20251001",
                 max_tokens=256,
-                system=self.system_prompt,
+                system=dynamic_prompt,
                 tools=self.tools,
                 messages=self.chat_history
             )
