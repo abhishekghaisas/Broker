@@ -17,7 +17,8 @@ def init_db():
             id TEXT PRIMARY KEY,
             name TEXT,
             is_safe_zone BOOLEAN,
-            description TEXT
+            description TEXT,
+            syndicate_presence BOOLEAN
         )
     """)
     
@@ -38,18 +39,18 @@ def init_db():
     if cursor.fetchone()[0] == 0:
         print("Seeding initial game state data...")
         cursor.executemany('''
-            INSERT INTO locations (id, name, is_safe_zone, description)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO locations (id, name, is_safe_zone, description, syndicate_presence)
+            VALUES (?, ?, ?, ?, ?)
         ''', [
-            ('loc_001', 'Neon District', False, 'A gritty, neon-lit slum. High gang activity. A good place to lay low, but dangerous to linger.'),
-            ('loc_002', 'The Safehouse', True, 'An underground bunker shielded from local scanners. No merchants here, but vitals stabilize.'),
-            ('loc_003', 'The Black Market', True, 'A subterranean bazaar. A smuggler here sells the Syndicate Decryption Key for 400 credits.'),
-            ('loc_004', 'Syndicate Tower', False, 'A heavily guarded corporate stronghold. Entering here without clearance is essentially a death sentence.'),
-            ('loc_005', 'Extraction Rooftop', False, 'The final extraction point. A heavy drop-ship waits in orbit, but requires the Decryption Key to land.')
+            ('loc_001', 'Neon District', False, 'A gritty, neon-lit slum. High gang activity. A good place to lay low, but dangerous to linger.', True),
+            ('loc_002', 'The Safehouse', True, 'An underground bunker shielded from local scanners. No merchants here, but vitals stabilize.', False),
+            ('loc_003', 'The Black Market', True, 'A subterranean bazaar. A smuggler here sells the Syndicate Decryption Key for 400 credits.', True),
+            ('loc_004', 'Syndicate Tower', False, 'A heavily guarded corporate stronghold. Entering here without clearance is essentially a death sentence.', True),
+            ('loc_005', 'Extraction Rooftop', False, 'The final extraction point. A heavy drop-ship waits in orbit, but requires the Decryption Key to land.', False)
         ])
         
         cursor.execute('''INSERT INTO players (id, name, health, status, credits, current_location_id, inventory) VALUES (?, ?, ?, ?, ?, ?, ?)''',
-                       ('player_1', 'Operative', 100, 'Active', 500, 'loc_001', 'None'))
+                       ('player_1', 'Operative', 100, 'Active', 250, 'loc_001', 'None'))
         conn.commit()
     conn.close()
     print("Database initialized and ready.")
@@ -205,6 +206,7 @@ def move_location(player_id: str, new_location_name: str) -> str:
         f"--- NAVIGATION COMPLETE ---\n"
         f"Relocated to: {new_location_name}{safe_text}"
     )
+@mcp.tool()
 def reset_game_state():
     """Utility function to reset the game state for testing or replayability."""
     conn = sqlite3.connect(DB_FILE)
@@ -220,6 +222,50 @@ def reset_game_state():
     conn.commit()
     conn.close()
     print("Game state has been reset to initial conditions.")
+
+@mcp.tool()
+def adjust_health(player_id: str, amount: int) -> str:
+    """
+    Adjust the Operative's health by a specified amount.
+    Positive values heal, negative values damage.
+    """
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+
+    #Verify the player exists
+    cursor.execute('SELECT health FROM players WHERE id = ?', (player_id,))
+    row = cursor.fetchone()
+
+    if not row:
+        return f"System Error: Player ID '{player_id}' not found."
+
+    new_health = max(0, min(100, row[0] + amount))  # Clamp between 0 and 100
+
+    #Update the player's health
+    cursor.execute('UPDATE players SET health = ? WHERE id = ?', (new_health, player_id))
+    conn.commit()
+    conn.close()
+
+    if new_health == 0:
+        return "--- CRITICAL ALERT ---\nHealth depleted to 0%. The Operative has been deceased."
+
+    return (
+        f"--- HEALTH ADJUSTED ---\n"
+        f"Vitals updated. New Health: {new_health}"
+    )
+@mcp.tool()
+def adjust_credits(player_id: str, amount: int) -> str:
+    "Adjust the Operative's credit balance by a specified amount. Positive values add credits, negative values deduct credits."
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute('SELECT credits FROM players WHERE id = ?', (player_id,))
+    row = cursor.fetchone()
+    if not row: return f"System Error: Player ID '{player_id}' not found."
+    new_balance = max(0, row[0] + amount)  # Prevent negative balance
+    cursor.execute('UPDATE players SET credits = ? WHERE id = ?', (new_balance, player_id))
+    conn.commit()
+    conn.close()
+    return f"Transaction Complete. New balance: {new_balance} Credits"
 
 #Simulated Game State/Lore
 

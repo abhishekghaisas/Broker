@@ -5,12 +5,12 @@ let audioContext;
 let mediaStream;
 let processor;
 
-// Initialize the playback audio context
+//Initialize the playback audio context
 const playbackCtx = new (window.AudioContext || window.webkitAudioContext)();
 let nextStartTime = 0; 
 
 const SAMPLE_RATE = 16000;
-// Instantiate your VAD from vad.js (Make sure vad.js is loaded in index.html before app.js)
+//Instantiate your VAD from vad.js (Make sure vad.js is loaded in index.html before app.js)
 const vad = new VoiceActivityDetector(0.015);
 
 const connectBtn = document.getElementById('connectBtn');
@@ -23,15 +23,15 @@ function logMessage(msg) {
 }
 
 // ---------------------------------------------------------
-// WebSocket Connection Manager
+//WebSocket Connection Manager
 // ---------------------------------------------------------
 function connectWebSocket() {
-    // If a connection is already open or opening, return it
+    //If a connection is already open or opening, return it
     if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
         return ws;
     }
     
-    // NOTE: Update this URL if your FastAPI backend runs on a different port/route
+    //Update this URL if your FastAPI backend runs on a different port/route
     ws = new WebSocket('ws://localhost:8000/stream'); 
     
     ws.onopen = () => {
@@ -49,12 +49,12 @@ function connectWebSocket() {
         }
 
         try {
-            // Wake up playback context if browser suspended it
+            //Wake up playback context if browser suspended it
             if (playbackCtx.state === 'suspended') {
                 await playbackCtx.resume();
             }
 
-            // Let native browser engine decode the Deepgram MP3 bytes
+            //Let native browser engine decode the Deepgram MP3 bytes
             playbackCtx.decodeAudioData(arrayBuffer, (audioBuffer) => {
                 const source = playbackCtx.createBufferSource();
                 source.buffer = audioBuffer;
@@ -86,10 +86,7 @@ function connectWebSocket() {
 
     return ws;
 }
-
-// ---------------------------------------------------------
 // Microphone & VAD Processor
-// ---------------------------------------------------------
 async function startMicrophone() {
     try {
         mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
@@ -104,23 +101,23 @@ async function startMicrophone() {
         const source = audioContext.createMediaStreamSource(mediaStream);
         processor = audioContext.createScriptProcessor(4096, 1, 1);
         
-        // Simplified VAD State
+        //Simplified VAD State
         let isSpeaking = false;
 
         processor.onaudioprocess = (e) => {
             const inputData = e.inputBuffer.getChannelData(0);
             
-            // 1. Convert Float32 to Int16 PCM
+            //Convert Float32 to Int16 PCM
             const int16Array = new Int16Array(inputData.length);
             for (let i = 0; i < inputData.length; i++) {
                 int16Array[i] = Math.max(-1, Math.min(1, inputData[i])) * 0x7FFF;
             }
 
-            // 2. Run Voice Activity Detection
+            //Run Voice Activity Detection
             const speechDetected = vad.hasSpeech(int16Array);
 
             if (speechDetected) {
-                // --- SPEECH DETECTED ---
+                //Speech Detected
                 if (!isSpeaking) {
                     console.log("🎙️ [VAD] Speech detected. Transmitting...");
                     isSpeaking = true;
@@ -128,17 +125,17 @@ async function startMicrophone() {
                     ws = connectWebSocket();
                 }
 
-                // Stream the bytes to the Python broker
+                //Stream the bytes to the Python broker
                 if (ws && ws.readyState === WebSocket.OPEN) {
                     ws.send(int16Array.buffer);
                 }
             } else {
-                // --- SILENCE DETECTED ---
+                //Silence Detected
                 if (isSpeaking) {
                     console.log("⏱️ [VAD] User paused. Holding connection open for AI response...");
                     isSpeaking = false;
                 }
-                // We do NOTHING else. We stop sending bytes, but we leave the WebSocket open.
+                //We do NOTHING else. We stop sending bytes, but we leave the WebSocket open.
             }
         };
 

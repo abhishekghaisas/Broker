@@ -2,7 +2,7 @@
 
 class VoiceActivityDetector {
     constructor(energyThreshold = 0.015) {
-        // Lower threshold = more sensitive. 0.015 is a standard baseline for near-field mics.
+        //Lower threshold = more sensitive. 0.015 is a standard baseline for near-field mics.
         this.energyThreshold = energyThreshold;
     }
 
