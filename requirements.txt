@@ -5,3 +5,4 @@ websockets
 wsproto
 anthropic
 mcp
+httpx

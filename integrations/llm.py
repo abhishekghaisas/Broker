@@ -2,7 +2,7 @@ import os
 import asyncio
 import httpx
 from anthropic import AsyncAnthropic
-from mcp_server import get_player_state, transfer_credits, move_location, grant_item
+from mcp_server import get_player_state, transfer_credits, move_location, grant_item, reset_game_state
 
 #Simulated Database
 GAME_LORE = {
@@ -80,6 +80,14 @@ class ConstrainedLLM:
                     },
                     "required": ["player_id", "item_name"]
                 }
+            },
+            {
+                "name": "reset_game_state",
+                "description": "Resets the Operative's status, inventory, credits, and location to the initial default state. Use this for testing or if the Operative gets into an unrecoverable situation.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {}
+                }
             }
         ]
 
@@ -132,6 +140,8 @@ class ConstrainedLLM:
                         player_id = tool_args.get("player_id", "player_1")
                         item_name = tool_args.get("item_name", "Unknown Item")
                         mcp_result = await asyncio.to_thread(grant_item, player_id, item_name)
+                    elif tool_name == "reset_game_state":
+                        mcp_result = await asyncio.to_thread(reset_game_state)
                 
                     else:
                         mcp_result = "System Error: Tool not recognized by the boundary."

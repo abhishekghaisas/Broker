@@ -205,6 +205,21 @@ def move_location(player_id: str, new_location_name: str) -> str:
         f"--- NAVIGATION COMPLETE ---\n"
         f"Relocated to: {new_location_name}{safe_text}"
     )
+def reset_game_state():
+    """Utility function to reset the game state for testing or replayability."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    #Reset player state
+    cursor.execute('''
+        UPDATE players
+        SET health = 100, status = 'Active', credits = 500, current_location_id = 'loc_001', inventory = 'None'
+        WHERE id = 'player_1'
+    ''')
+    
+    conn.commit()
+    conn.close()
+    print("Game state has been reset to initial conditions.")
 
 #Simulated Game State/Lore
 
