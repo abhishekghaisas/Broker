@@ -3,20 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebSocket Router Test</title>
-    <style>
-        body { font-family: sans-serif; padding: 20px; background: #f4f4f9; }
-        button { padding: 10px 15px; margin-right: 10px; cursor: pointer; }
-        #log { margin-top: 20px; background: #222; color: #0f0; padding: 15px; height: 300px; overflow-y: scroll; font-family: monospace; }
-    </style>
+    <title>Voice AI Broker HUD</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <h2>Edge Client: WebSocket Tester</h2>
-    <button id="connectBtn">1. Connect</button>
-    <button id="sendBtn" disabled>2. Send Mock Chunk</button>
-    <button id="disconnectBtn" disabled>3. Disconnect</button>
+    <div class="hud-container">
+        <div class="status-indicator">
+            <span id="pulse" class="listening-pulse"></span>
+            <span id="status">SYSTEM IDLE</span>
+        </div>
+        
+        <div id="game-state">
+            <p>Location: <span id="loc">Awaiting Link...</span></p>
+            <p>Health: <span id="health">--</span></p>
+            <p>Credits: <span id="credits">--</span></p>
+        </div>
+        <div id="puzzle-overlay" style="display: none; position: fixed; top: 20%; left: 20%; background: #000; border: 2px solid #ff0055; padding: 20px;">
+            <h3>SYSTEM BREACH</h3>
+            <p id="puzzle-desc">Hacking Syndicate Terminal...</p>
+            <button onclick="solvePuzzle()">BYPASS</button>
+        </div>
 
-    <div id="log">System Ready...<br></div>
+        <button id="connectBtn">INITIALIZE LINK</button>
+        <button id="disconnectBtn" disabled>TERMINATE LINK</button>
+        
+        <div id="log" style="font-size: 0.7em; margin-top: 10px; color: #888;"></div>
+    </div>
 
     <script src="vad.js"></script>
     <script src="app.js"></script>

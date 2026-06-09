@@ -6,3 +6,4 @@ wsproto
 anthropic
 mcp
 httpx
+sqlite3

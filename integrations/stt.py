@@ -25,8 +25,7 @@ class StreamingSTT:
         try:
             while True:
                 try:
-
-                    chunk = await asyncio.wait_for(audio_queue.get(), timeout=5.0)
+                    chunk = await asyncio.wait_for(audio_queue.get(), timeout=3.0)
 
                     if self.connection:
                         await self.connection.send(chunk)

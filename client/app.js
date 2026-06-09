@@ -39,52 +39,53 @@ function connectWebSocket() {
     };
 
     ws.onmessage = async (event) => {
-        let arrayBuffer;
-        
-        if (event.data instanceof Blob) {
-            arrayBuffer = await event.data.arrayBuffer();
-        } else {
-            console.log("💬 [JSON/Text from Server]:", event.data);
-            return; 
-        }
-
-        try {
-            //Wake up playback context if browser suspended it
-            if (playbackCtx.state === 'suspended') {
-                await playbackCtx.resume();
-            }
-
-            //Let native browser engine decode the Deepgram MP3 bytes
-            playbackCtx.decodeAudioData(arrayBuffer, (audioBuffer) => {
-                const source = playbackCtx.createBufferSource();
-                source.buffer = audioBuffer;
-                source.connect(playbackCtx.destination);
-                
-                const currentTime = playbackCtx.currentTime;
-                if (nextStartTime < currentTime) {
-                    nextStartTime = currentTime;
+    // 1. DATA PLANE: Check if the incoming packet is a UI JSON String
+        if (typeof event.data === "string") {
+            try {
+                const uiData = JSON.parse(event.data);
+            
+                // Render the puzzle if a terminal tag is received
+                if (uiData.type === "terminal") {
+                    const puzzleOverlay = document.getElementById('puzzle-overlay');
+                    if (puzzleOverlay) {
+                        puzzleOverlay.style.display = 'block';
+                        document.getElementById('puzzle-desc').innerText = uiData.content;
+                    }
                 }
-                
-                source.start(nextStartTime);
-                nextStartTime += audioBuffer.duration;
-                
-            }, (error) => {
-                console.error("❌ [Decode Error] Browser failed to decode the MP3:", error);
-            });
+            
+                // Optional: Handle system alerts
+                if (uiData.type === "system_alert") {
+                    console.warn("SYSTEM ALERT:", uiData.content);
+                }
+
+                // INSTANT SYNC: Force the HUD to update the exact moment the LLM acts
+                // This solves your credits not updating in real-time!
+                updateHUD(); 
+
+            } catch (err) {
+                console.error("⚠️ [UI Parser Error]:", err);
+            }
+            return; // Halt execution so it doesn't try to play this text as audio
+        }
+
+        // 2. AUDIO PLANE: Handle binary audio blobs natively
+        try {
+            const arrayBuffer = await event.data.arrayBuffer();
+            const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        
+            const source = audioContext.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(audioContext.destination);
+            source.start();
         } catch (err) {
-            console.error("❌ [Fatal Error] Web Audio API crashed during decode:", err);
+            console.error("⚠️ [Audio Playback Error]:", err);
         }
     };
 
-    ws.onclose = () => {
-        console.log('🔴 [Network] Cloud connection closed.');
-    };
-
-    ws.onerror = () => {
-        console.log('⚠️ [Network] WebSocket Error.');
-    };
-
-    return ws;
+    // Add this to allow you to close the puzzle visually once you answer it verbally
+    document.getElementById('bypassBtn').addEventListener('click', () => {
+        document.getElementById('puzzle-overlay').style.display = 'none';
+    });
 }
 // Microphone & VAD Processor
 async function startMicrophone() {
@@ -183,3 +184,34 @@ disconnectBtn.onclick = () => {
     connectBtn.disabled = false;
     disconnectBtn.disabled = true;
 };
+
+async function updateHUD() {
+    try {
+        const response = await fetch('http://localhost:8000/state');
+        if (!response.ok) {
+            // This prints the actual error message from the server
+            const errorData = await response.json();
+            throw new Error(errorData.detail || 'Server error');
+        }
+        const state = await response.json();
+        
+        // Update your HUD elements
+        document.getElementById('loc').innerText = state.location;
+        document.getElementById('health').innerText = state.health + "%";
+        document.getElementById('credits').innerText = state.credits;
+        
+        const puzzleOverlay = document.getElementById('puzzle-overlay');
+        if (puzzleOverlay) {
+            if (state.puzzle) {
+                puzzleOverlay.style.display = 'block';
+                document.getElementById('puzzle-desc').innerText = state.puzzle;
+            } else {
+                puzzleOverlay.style.display = 'none';
+            }
+        }
+    } catch (err) {
+        console.warn("⚠️ [HUD] Could not sync with backend state.", err.message);
+    }
+}
+
+setInterval(updateHUD, 3000);
