@@ -1,32 +1,33 @@
-#integrations/classifier.py
-
 import re
+import asyncio
 
 class EarlyHeuristicsClassifier:
     def __init__(self):
-        #Define our low-stakes ambient queries and their instant cached responses
-        self.intent_map = {
-            r"^(who is alan|tell me about alan)": "Alan is a rogue synth in the Neon District.",
-            r"^(where am i|what is my location)": "You are currently securely logged in at the safehouse.",
-            r"^(is it safe|what is the status)": "The area is clear. No hostile entities detected."
-        }
-        
-        #Compile regexes for ultra-fast matching
-        self.compiled_intents = {re.compile(pattern, re.IGNORECASE): response for pattern, response in self.intent_map.items()}
+        # Define ultra-fast Regex patterns for "Ambient" (low-stakes) queries
+        self.ambient_patterns = [
+            r"^\s*(hello|hi|hey|greetings)\b",
+            r"\bhow are you\b",
+            r"\bwhat is your name\b",
+            r"^\s*test(ing)?\s*$",
+            r"^\s*check(ing)?\s*$"
+        ]
+        self.compiled_patterns = [re.compile(p, re.IGNORECASE) for p in self.ambient_patterns]
 
-    def predict_intent(self, partial_text: str) -> str | None:
+    async def classify(self, text: str) -> str:
         """
-        Scans mid-sentence partial transcripts for early intent recognition.
-        Returns the cached string response if a match is found, otherwise None.
+        Intercepts transcripts to route them.
+        Returns 'ambient' for simple chatter, or 'llm' for complex game logic.
         """
-        clean_text = partial_text.strip().lower()
+        # We use asyncio to ensure this doesn't block the router's main thread
+        await asyncio.sleep(0.001) 
         
-        for pattern, response in self.compiled_intents.items():
-            if pattern.search(clean_text):
-                print(f"⚡ [Heuristics] Intent intercepted early: '{clean_text}'")
-                return response
-                
-        return None
+        # Check against early heuristics
+        for pattern in self.compiled_patterns:
+            if pattern.search(text):
+                return "ambient"
+        
+        # If it doesn't match ambient chatter, route to the expensive LLM
+        return "llm"
 
-#Instantiate the fast classifier
+# Instantiate a single global instance for the router to import
 intent_classifier = EarlyHeuristicsClassifier()

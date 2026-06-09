@@ -1,24 +1,25 @@
 // client/vad.js
 
 class VoiceActivityDetector {
-    constructor(energyThreshold = 0.015) {
-        //Lower threshold = more sensitive. 0.015 is a standard baseline for near-field mics.
-        this.energyThreshold = energyThreshold;
+    constructor(threshold = 0.015) {
+        // Lower threshold = more sensitive. 0.015 is a standard baseline.
+        this.threshold = threshold;
     }
 
     /**
-     * Analyzes an Int16Array of audio to determine if speech is present.
+     * Analyzes a Float32Array of audio to determine if speech is present.
      */
-    hasSpeech(int16Array) {
-        let sumSquares = 0;
+    process(float32Array) {
+        let sumSquares = 0.0;
         
-        for (let i = 0; i < int16Array.length; i++) {
-            // Normalize the 16-bit integer back to a -1.0 to 1.0 float range
-            const sample = int16Array[i] / 32768.0;
-            sumSquares += sample * sample;
+        for (let i = 0; i < float32Array.length; i++) {
+            // Data is already between -1.0 and 1.0, no need to divide by 32768
+            sumSquares += float32Array[i] * float32Array[i];
         }
         
-        const rms = Math.sqrt(sumSquares / int16Array.length);
-        return rms > this.energyThreshold;
+        const rms = Math.sqrt(sumSquares / float32Array.length);
+        
+        // Returns true if the volume exceeds the noise threshold
+        return rms > this.threshold; 
     }
 }

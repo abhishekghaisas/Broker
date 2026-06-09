@@ -18,17 +18,24 @@
             <p>Health: <span id="health">--</span></p>
             <p>Credits: <span id="credits">--</span></p>
         </div>
-        <div id="puzzle-overlay" style="display: none; position: fixed; top: 20%; left: 20%; background: #000; border: 2px solid #ff0055; padding: 20px;">
-            <h3>SYSTEM BREACH</h3>
-            <p id="puzzle-desc">Hacking Syndicate Terminal...</p>
-            <button onclick="solvePuzzle()">BYPASS</button>
+    </div>
+
+    <div id="puzzle-overlay" style="display: none; position: fixed; top: 20%; left: 20%; background: #1a1a1a; border: 2px solid #ff0055; padding: 20px; color: #fff; z-index: 9999; min-width: 300px;">
+        <h3>SYSTEM BREACH</h3>
+        <p id="puzzle-desc">Hacking Syndicate Terminal...</p>
+        
+        <div style="margin-top: 15px;">
+            <input type="text" id="puzzleInput" placeholder="Enter override code..." style="padding: 10px; width: 70%; background: #000; color: #0f0; border: 1px solid #ff0055; font-family: monospace;">
+            <button id="submitPuzzleBtn" style="padding: 10px; background: #0f0; color: black; border: none; cursor: pointer; font-weight: bold;">SUBMIT</button>
         </div>
 
-        <button id="connectBtn">INITIALIZE LINK</button>
-        <button id="disconnectBtn" disabled>TERMINATE LINK</button>
-        
-        <div id="log" style="font-size: 0.7em; margin-top: 10px; color: #888;"></div>
+        <button id="bypassBtn" style="margin-top: 15px; padding: 5px 10px; background: #333; color: white; border: 1px solid #555; cursor: pointer; font-size: 0.8em;">CLOSE TERMINAL</button>
+    </div> <div style="margin: 20px;">
+        <button id="connectBtn" style="padding: 10px 20px; background: #00ff00; color: black; font-weight: bold; cursor: pointer;">Connect Audio</button>
+        <button id="disconnectBtn" disabled style="padding: 10px 20px; background: #ff0055; color: white; cursor: pointer;">Disconnect</button>
     </div>
+
+    <div id="log" style="color: #ccc; font-size: 0.8em; margin-top: 10px; max-height: 100px; overflow-y: auto;"></div>
 
     <script src="vad.js"></script>
     <script src="app.js"></script>
