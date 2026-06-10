@@ -1,5 +1,21 @@
 // client/app.js
 
+// Determine backend URL based on environment
+const BACKEND_URL = (() => {
+    const env = window.location.hostname;
+
+    // Production (Vercel domain)
+    if (env.includes('vercel.app') || (typeof process !== 'undefined' && process.env.NODE_ENV === 'production')) {
+        // Get from window variable or environment
+        return window.BROKER_BACKEND_URL || 'https://broker-backend.onrender.com';
+    }
+
+    // Local development
+    return 'http://localhost:8000';
+})();
+
+const WS_URL = BACKEND_URL.replace(/^http/, 'ws');
+
 let ws = null;
 let audioContext;
 let mediaStream;
@@ -52,6 +68,12 @@ document.addEventListener('DOMContentLoaded', () => {
         restartBtn.addEventListener('click', () => location.reload());
     }
 
+    // 1c. Restart after loss — reload for a fresh operation.
+    const restartLossBtn = document.getElementById('restartLossBtn');
+    if (restartLossBtn) {
+        restartLossBtn.addEventListener('click', () => location.reload());
+    }
+
     // 2. Keyboard Input Binding
     const submitBtn = document.getElementById('submitPuzzleBtn');
     const puzzleInput = document.getElementById('puzzleInput');
@@ -101,6 +123,26 @@ function showVictory(summary) {
     if (status) status.innerText = "MISSION COMPLETE";
 }
 
+function showLoss(summary) {
+    const overlay = document.getElementById('loss-overlay');
+    if (overlay) {
+        const summaryEl = document.getElementById('loss-summary');
+        if (summaryEl) summaryEl.innerText = summary || '';
+        overlay.style.display = 'flex';
+    }
+
+    // The game is over: stop capturing audio and close the link.
+    stopMicrophone();
+    if (ws) {
+        try { ws.close(); } catch (e) {}
+        ws = null;
+    }
+    if (connectBtn) connectBtn.disabled = false;
+    if (disconnectBtn) disconnectBtn.disabled = true;
+    const status = document.getElementById('status');
+    if (status) status.innerText = "MISSION FAILED";
+}
+
 // ---------------------------------------------------------
 // WebSocket Connection Manager
 // ---------------------------------------------------------
@@ -109,7 +151,7 @@ function connectWebSocket() {
         return;
     }
     
-    ws = new WebSocket('ws://localhost:8000/stream'); 
+    ws = new WebSocket(`${WS_URL}/stream`); 
     
     ws.onopen = () => {
         console.log('🟢 [Network] Connected to Event Broker.');
@@ -137,6 +179,12 @@ function connectWebSocket() {
                 // Mission won — show the congratulation window and end the session.
                 if (uiData.type === "victory") {
                     showVictory(uiData.content);
+                    return;
+                }
+
+                // Mission lost — show the failure window and end the session.
+                if (uiData.type === "loss") {
+                    showLoss(uiData.content);
                     return;
                 }
 
@@ -271,7 +319,7 @@ if(disconnectBtn) {
 
 async function updateHUD() {
     try {
-        const response = await fetch('http://localhost:8000/state');
+        const response = await fetch(`${BACKEND_URL}/state`);
         if (!response.ok) {
             const errorData = await response.json();
             throw new Error(errorData.detail || 'Server error');

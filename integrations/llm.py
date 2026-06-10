@@ -300,9 +300,42 @@ Example Response:
         conn.close()
         return out
 
+    def _check_loss_condition(self):
+        """Check if the player is in an unwinnable state."""
+        try:
+            conn = sqlite3.connect("game_state.db")
+            c = conn.cursor()
+            c.execute("SELECT credits, health FROM players WHERE id = 'player_1'")
+            row = c.fetchone()
+            conn.close()
+
+            if not row:
+                return False
+
+            credits, health = row
+            user_turn_count = sum(1 for msg in self.chat_history if msg["role"] == "user")
+
+            # Loss condition: credits < 400 (can't afford key) AND either:
+            # - Had 7+ turns to earn credits and failed, OR
+            # - Health is critically low (< 30%) indicating failed encounters
+            if credits < 400 and (user_turn_count >= 7 or health < 30):
+                return True
+
+            return False
+        except Exception as e:
+            print(f"⚠️ [Loss Check Error]: {e}")
+            return False
+
     async def generate_response(self, text_prompt, tts_queue, ui_queue):
         try:
             print("🧠 [Cognition] Initiating neural link...")
+
+            # Check for loss condition before processing
+            if self._check_loss_condition():
+                loss_msg = "MISSION CRITICAL FAILURE: Operative health critically compromised with insufficient funds for extraction protocol. Evacuation denied."
+                await ui_queue.put({"type": "loss", "content": loss_msg})
+                return
+
             self.chat_history.append({"role": "user", "content": text_prompt})
 
             # Single tool-use loop: every turn is streamed, so <voice> dialogue

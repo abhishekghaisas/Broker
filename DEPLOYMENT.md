@@ -15,6 +15,15 @@ This guide explains how to deploy the Broker game to production using **Render**
 
 ### 1.1 Create a Render Service
 
+#### Option A: Using render.yaml (Recommended)
+
+1. Go to [render.com](https://render.com) and sign in
+2. Click **"New +"** → **"Web Service"** → **"Public Git Repository"**
+3. Enter your GitHub repo URL
+4. Render will automatically detect `render.yaml` and configure everything
+
+#### Option B: Manual Configuration via Dashboard
+
 1. Go to [render.com](https://render.com) and sign in
 2. Click **"New +"** → **"Web Service"**
 3. Connect your GitHub repository
@@ -22,7 +31,7 @@ This guide explains how to deploy the Broker game to production using **Render**
    - **Name**: `broker-backend`
    - **Environment**: `Python 3`
    - **Build Command**: `pip install -r requirements.txt`
-   - **Start Command**: Leave empty (uses Procfile)
+   - **Start Command**: `uvicorn main:app --host 0.0.0.0 --port $PORT --workers 2`
    - **Instance Type**: Free or Starter (depending on your needs)
 
 ### 1.2 Set Environment Variables

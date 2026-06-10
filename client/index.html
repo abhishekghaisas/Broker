@@ -68,6 +68,15 @@
         </div>
     </div>
 
+    <div id="loss-overlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 10000; align-items: center; justify-content: center;">
+        <div style="background: #1a0a0a; border: 2px solid #ff0055; border-radius: 10px; padding: 30px 40px; max-width: 480px; text-align: center; box-shadow: 0 0 35px rgba(255,0,85,0.55); color: #ffb3c1; font-family: 'Courier New', monospace;">
+            <h1 style="color: #ff0055; margin: 0 0 8px; letter-spacing: 3px;">MISSION FAILED</h1>
+            <p style="color: #ff6b7a; margin: 0 0 18px;">Operative status: INCAPACITATED.</p>
+            <pre id="loss-summary" style="text-align: left; background: #000; border: 1px solid #ff0055; padding: 12px; white-space: pre-wrap; font-size: 0.85em; margin: 0;"></pre>
+            <button id="restartLossBtn" style="margin-top: 18px; padding: 10px 24px; background: #ff0055; color: white; border: none; font-weight: bold; cursor: pointer;">RETRY OPERATION</button>
+        </div>
+    </div>
+
     <script src="vad.js"></script>
     <script src="app.js"></script>
 </body>
