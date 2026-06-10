@@ -1,10 +1,7 @@
 {
   "name": "broker-frontend",
   "version": 2,
-  "buildCommand": "mkdir -p .vercel/output/static && cp -r client/* .vercel/output/static/",
-  "outputDirectory": ".vercel/output/static",
-  "env": {
-    "REACT_APP_BACKEND_URL": "@backend-url"
-  },
+  "buildCommand": "echo 'Static site'",
+  "outputDirectory": "client",
   "public": false
 }
