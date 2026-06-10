@@ -4,7 +4,7 @@ import random
 from mcp.server.fastmcp import FastMCP
 
 #Initialize FastMCP Server
-mcp = FastMCP("LoreBoundaryServer", host="127.0.0.1", port=8001)
+mcp = FastMCP("LoreBoundaryServer", host="0.0.0.0", port=8001)
 
 DB_FILE = "game_state.db"
 
