@@ -8,6 +8,7 @@
 </head>
 <body>
     <div class="hud-container">
+        
         <div class="status-indicator">
             <span id="pulse" class="listening-pulse"></span>
             <span id="status">SYSTEM IDLE</span>
@@ -17,6 +18,32 @@
             <p>Location: <span id="loc">Awaiting Link...</span></p>
             <p>Health: <span id="health">--</span></p>
             <p>Credits: <span id="credits">--</span></p>
+        </div>
+
+        <div style="margin-top: 20px; border-top: 1px solid #333; padding-top: 15px;">
+            <button id="connectBtn" style="padding: 10px 20px; background: #00ff00; color: black; font-weight: bold; cursor: pointer; width: 48%;">Connect Audio</button>
+            <button id="disconnectBtn" disabled style="padding: 10px 20px; background: #ff0055; color: white; cursor: pointer; width: 48%; float: right;">Disconnect</button>
+        </div>
+        
+        <div id="log" style="color: #ccc; font-size: 0.8em; margin-top: 15px; max-height: 80px; overflow-y: auto;"></div>
+        
+    </div>
+
+    <div id="main-menu" style="display: flex; position: fixed; inset: 0; background: rgba(0,0,0,0.95); z-index: 100000; align-items: center; justify-content: center;">
+        <div style="background: #0a0a0a; border: 2px solid #ff0055; border-radius: 8px; padding: 40px 50px; max-width: 520px; text-align: center; box-shadow: 0 0 40px rgba(255,0,85,0.4); color: #fff; font-family: 'Courier New', monospace;">
+            <h1 style="color: #ff0055; margin: 0 0 12px; letter-spacing: 2px; font-size: 2.2em;">BROKER</h1>
+            <p style="color: #ccc; margin: 0 0 8px; font-size: 0.9em;">Neural Operative Extraction Protocol</p>
+            <hr style="border: none; border-top: 1px solid #333; margin: 18px 0;">
+
+            <p style="color: #aaa; margin: 0 0 16px; line-height: 1.5; font-size: 0.9em;">You are an Operative embedded in Syndicate territory. Your mission: reach the Extraction Rooftop and evacuate. Navigate the neon-soaked city, gather credits, solve tactical puzzles, and acquire the Syndicate Decryption Key to board the escape shuttle.</p>
+
+            <div style="background: #1a1a1a; border: 1px solid #333; padding: 12px; margin: 16px 0; font-size: 0.8em; color: #0f0; text-align: left;">
+                <p style="margin: 0 0 6px;"><strong>VOICE COMMANDS:</strong> Speak naturally to NOVA.</p>
+                <p style="margin: 0 0 6px;"><strong>PUZZLES:</strong> Respond to tactical challenges when presented.</p>
+                <p style="margin: 0;"><strong>STATUS:</strong> Monitor health, location, and credits in the HUD.</p>
+            </div>
+
+            <button id="startMissionBtn" style="margin-top: 24px; padding: 12px 32px; background: #ff0055; color: white; border: none; font-weight: bold; cursor: pointer; font-size: 1em; border-radius: 4px;">INITIATE OPERATION</button>
         </div>
     </div>
 
@@ -30,12 +57,16 @@
         </div>
 
         <button id="bypassBtn" style="margin-top: 15px; padding: 5px 10px; background: #333; color: white; border: 1px solid #555; cursor: pointer; font-size: 0.8em;">CLOSE TERMINAL</button>
-    </div> <div style="margin: 20px;">
-        <button id="connectBtn" style="padding: 10px 20px; background: #00ff00; color: black; font-weight: bold; cursor: pointer;">Connect Audio</button>
-        <button id="disconnectBtn" disabled style="padding: 10px 20px; background: #ff0055; color: white; cursor: pointer;">Disconnect</button>
     </div>
 
-    <div id="log" style="color: #ccc; font-size: 0.8em; margin-top: 10px; max-height: 100px; overflow-y: auto;"></div>
+    <div id="victory-overlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 10000; align-items: center; justify-content: center;">
+        <div style="background: #06120b; border: 2px solid #00ff88; border-radius: 10px; padding: 30px 40px; max-width: 480px; text-align: center; box-shadow: 0 0 35px rgba(0,255,136,0.55); color: #d6ffe6; font-family: 'Courier New', monospace;">
+            <h1 style="color: #00ff88; margin: 0 0 8px; letter-spacing: 3px;">EXTRACTION COMPLETE</h1>
+            <p style="color: #7CFC00; margin: 0 0 18px;">Operative evacuated. Mission accomplished.</p>
+            <pre id="victory-summary" style="text-align: left; background: #000; border: 1px solid #00ff88; padding: 12px; white-space: pre-wrap; font-size: 0.85em; margin: 0;"></pre>
+            <button id="restartBtn" style="margin-top: 18px; padding: 10px 24px; background: #00ff88; color: #000; border: none; font-weight: bold; cursor: pointer;">NEW OPERATION</button>
+        </div>
+    </div>
 
     <script src="vad.js"></script>
     <script src="app.js"></script>

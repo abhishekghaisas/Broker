@@ -28,6 +28,15 @@ function logMessage(msg) {
 // DOM Event Listeners (Global Scope - Bind Once)
 // ---------------------------------------------------------
 document.addEventListener('DOMContentLoaded', () => {
+    // 0. Main Menu Handler
+    const startMissionBtn = document.getElementById('startMissionBtn');
+    if (startMissionBtn) {
+        startMissionBtn.addEventListener('click', () => {
+            const mainMenu = document.getElementById('main-menu');
+            if (mainMenu) mainMenu.style.display = 'none';
+        });
+    }
+
     // 1. Bypass Button Binding
     const bypassBtn = document.getElementById('bypassBtn');
     if (bypassBtn) {
@@ -35,6 +44,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const overlay = document.getElementById('puzzle-overlay');
             if (overlay) overlay.style.display = 'none';
         });
+    }
+
+    // 1b. Restart after victory — reload for a fresh operation.
+    const restartBtn = document.getElementById('restartBtn');
+    if (restartBtn) {
+        restartBtn.addEventListener('click', () => location.reload());
     }
 
     // 2. Keyboard Input Binding
@@ -55,10 +70,36 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Send the text answer as a JSON payload
                 ws.send(JSON.stringify({ type: "text_input", text: answer }));
                 puzzleInput.value = ''; // Clear the input box
+                // Dismiss the puzzle once an answer is submitted.
+                const overlay = document.getElementById('puzzle-overlay');
+                if (overlay) overlay.style.display = 'none';
             }
         }
     }
 });
+
+// ---------------------------------------------------------
+// Victory / Game-Over Screen
+// ---------------------------------------------------------
+function showVictory(summary) {
+    const overlay = document.getElementById('victory-overlay');
+    if (overlay) {
+        const summaryEl = document.getElementById('victory-summary');
+        if (summaryEl) summaryEl.innerText = summary || '';
+        overlay.style.display = 'flex';
+    }
+
+    // The game is over: stop capturing audio and close the link.
+    stopMicrophone();
+    if (ws) {
+        try { ws.close(); } catch (e) {}
+        ws = null;
+    }
+    if (connectBtn) connectBtn.disabled = false;
+    if (disconnectBtn) disconnectBtn.disabled = true;
+    const status = document.getElementById('status');
+    if (status) status.innerText = "MISSION COMPLETE";
+}
 
 // ---------------------------------------------------------
 // WebSocket Connection Manager
@@ -91,6 +132,12 @@ function connectWebSocket() {
 
                 if (uiData.type === "system_alert") {
                     console.warn("SYSTEM ALERT:", uiData.content);
+                }
+
+                // Mission won — show the congratulation window and end the session.
+                if (uiData.type === "victory") {
+                    showVictory(uiData.content);
+                    return;
                 }
 
                 // Force HUD to update instantly
@@ -150,6 +197,13 @@ async function startMicrophone() {
             connectWebSocket();
 
             if (vad.process(float32Array)) {
+                // Half-duplex: while NOVA's TTS is still playing, the speakers leak
+                // into the mic and the agent transcribes (and re-acts on) its own
+                // voice. Skip capture until scheduled playback has finished.
+                if (playbackCtx.currentTime < nextStartTime) {
+                    return;
+                }
+
                 const int16Array = new Int16Array(float32Array.length);
                 for (let i = 0; i < float32Array.length; i++) {
                     let s = Math.max(-1, Math.min(1, float32Array[i]));
@@ -232,14 +286,15 @@ async function updateHUD() {
         if(healthEl) healthEl.innerText = state.health + "%";
         if(credEl) credEl.innerText = state.credits;
         
+        // LLM-driven puzzles arrive over the WebSocket as <terminal> messages,
+        // not via the DB. The poller only knows about DB-backed active_puzzle, so
+        // it may only OPEN the overlay — never auto-hide one it doesn't track,
+        // or it would instantly close a websocket puzzle. Dismissal is handled by
+        // the SUBMIT and CLOSE TERMINAL buttons.
         const puzzleOverlay = document.getElementById('puzzle-overlay');
-        if (puzzleOverlay) {
-            if (state.puzzle) {
-                puzzleOverlay.style.display = 'block';
-                document.getElementById('puzzle-desc').innerText = state.puzzle;
-            } else {
-                puzzleOverlay.style.display = 'none';
-            }
+        if (puzzleOverlay && state.puzzle) {
+            puzzleOverlay.style.display = 'block';
+            document.getElementById('puzzle-desc').innerText = state.puzzle;
         }
     } catch (err) {
         console.warn("⚠️ [HUD] Sync Failed:", err.message);

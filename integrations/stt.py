@@ -44,19 +44,24 @@ class StreamingSTT:
                     response = await self.connection.recv()
                     data = json.loads(response)
                     
-                    #Parse the transcript and finality flag from the JSON payload
+                    #Parse the transcript and finality flags from the JSON payload.
+                    #is_final marks a finalized segment; speech_final marks the end
+                    #of the whole utterance (endpoint detected).
                     is_final = data.get("is_final", False)
+                    speech_final = data.get("speech_final", False)
                     transcript = data.get("channel", {}).get("alternatives", [{}])[0].get("transcript", "")
 
-                    #We now forward ALL chunks (partial and final) to the router for early interception
-                    if transcript:
+                    #Forward chunks with content AND end-of-utterance signals. Deepgram
+                    #often delivers speech_final on a message with an empty transcript;
+                    #we must still forward it or the router never fires cognition.
+                    if transcript or speech_final:
                         t0 = time.perf_counter()
-                        
+
                         #Only print the final transcripts to keep the terminal clean
-                        if is_final:
+                        if is_final and transcript:
                             print(f"[{t0:.3f}]🔵 STT Transcript: {transcript}")
-                            
-                        #Push the 3-part telemetry tuple: (text, timestamp, is_final flag)
-                        await token_queue.put((transcript, t0, is_final))
+
+                        #Push the 4-part telemetry tuple: (text, timestamp, is_final, speech_final)
+                        await token_queue.put((transcript, t0, is_final, speech_final))
         except Exception as e:
             print(f"STT Receiver Error: {e}")

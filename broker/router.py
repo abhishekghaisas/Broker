@@ -53,23 +53,60 @@ async def websocket_endpoint(websocket: WebSocket):
         except Exception as e:
             print(f"⚠️ UI Push Task Error: {e}")
 
+    def drain_token_queue():
+        """Discards any buffered transcripts (stale duplicate finals or TTS
+        self-echo that leaked into the mic) so they can't re-trigger cognition."""
+        while not token_queue.empty():
+            try:
+                token_queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+
+    async def fire_cognition(prompt):
+        """Runs one full classify -> LLM cognition cycle for a complete utterance."""
+        flush_queues(tts_queue, audio_out_queue)
+        intent = await intent_classifier.classify(prompt)
+        if intent == "ambient":
+            print("🤖 [Edge Routing]: Ambient Query Detected. Bypassing LLM.")
+            # Handle ambient logic here if implemented
+        else:
+            # Full cognitive cycle
+            await llm_engine.generate_response(prompt, tts_queue, ui_queue)
+        # Drop transcripts that accumulated while we were generating/speaking.
+        drain_token_queue()
+
     async def process_cognition():
         """Main AI evaluation loop."""
+        # Accumulate finalized STT segments and fire ONE cognition cycle per
+        # utterance. End-of-utterance is detected by a transcript silence gap:
+        # the frontend VAD stops sending audio during pauses, so Deepgram never
+        # sees trailing silence and rarely emits speech_final. We therefore debounce
+        # — once finals stop arriving for SILENCE_TIMEOUT, the utterance is complete.
+        # (speech_final, when it does arrive, fires immediately.) Firing on every
+        # is_final instead would launch overlapping generations on the shared chat
+        # history and repeat the response many times.
+        SILENCE_TIMEOUT = 1.0  # seconds of transcript silence => utterance complete
+        utterance = ""
         try:
             while True:
-                text, timestamp, is_final = await token_queue.get()
+                try:
+                    # Only impose the silence deadline once we have buffered speech.
+                    timeout = SILENCE_TIMEOUT if utterance else None
+                    text, timestamp, is_final, speech_final = await asyncio.wait_for(
+                        token_queue.get(), timeout=timeout
+                    )
+                except asyncio.TimeoutError:
+                    # Transcripts went quiet — the speaker paused. Fire what we have.
+                    prompt, utterance = utterance, ""
+                    await fire_cognition(prompt)
+                    continue
+
                 if is_final and text.strip():
-                    flush_queues(tts_queue, audio_out_queue)
-                    
-                    # Intent classifier routing
-                    intent = await intent_classifier.classify(text)
-                    if intent == "ambient":
-                        print("🤖 [Edge Routing]: Ambient Query Detected. Bypassing LLM.")
-                        # Handle ambient logic here if implemented
-                        pass
-                    else:
-                        # Full cognitive cycle
-                        await llm_engine.generate_response(text, tts_queue, ui_queue)
+                    utterance = f"{utterance} {text}".strip()
+
+                if speech_final and utterance:
+                    prompt, utterance = utterance, ""
+                    await fire_cognition(prompt)
         except Exception as e:
             print(f"Cognition Error: {e}")
 
@@ -119,8 +156,9 @@ async def websocket_endpoint(websocket: WebSocket):
                         print(f"⌨️ [Manual Input Intercept]: {user_text}")
                         
                         # INJECT DIRECTLY INTO COGNITION (Bypass STT entirely)
-                        # We simulate an STT final transcript: (text, timestamp, is_final)
-                        await token_queue.put((user_text, time.perf_counter(), True))
+                        # Simulate a complete STT utterance: is_final AND speech_final
+                        # are both True so cognition fires exactly once.
+                        await token_queue.put((user_text, time.perf_counter(), True, True))
                 except Exception as e:
                     print(f"⚠️ Text Parse Error: {e}")
 
