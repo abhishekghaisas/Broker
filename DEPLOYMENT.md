@@ -31,7 +31,7 @@ This guide explains how to deploy the Broker game to production using **Render**
    - **Name**: `broker-backend`
    - **Environment**: `Python 3`
    - **Build Command**: `pip install -r requirements.txt`
-   - **Start Command**: `uvicorn main:app --host 0.0.0.0 --port $PORT --workers 2`
+   - **Start Command**: `gunicorn main:app --workers 2 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT`
    - **Instance Type**: Free or Starter (depending on your needs)
 
 ### 1.2 Set Environment Variables
