@@ -3,11 +3,14 @@
 import os
 import re
 import sqlite3
-import psycopg2
-from psycopg2.extras import RealDictCursor
 
 DB_URL = os.getenv("DATABASE_URL")
 USE_POSTGRES = DB_URL is not None
+
+# Only import psycopg2 if using PostgreSQL
+if USE_POSTGRES:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
 
 def convert_sql(sql):
     """Convert SQLite SQL (with ?) to PostgreSQL SQL (with %s)."""
