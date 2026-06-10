@@ -2,6 +2,7 @@ import asyncio
 import sqlite3
 import random
 from mcp.server.fastmcp import FastMCP
+from db import get_connection, get_cursor, init_tables, USE_POSTGRES
 
 #Initialize FastMCP Server
 mcp = FastMCP("LoreBoundaryServer", host="0.0.0.0", port=8001)
@@ -9,43 +10,24 @@ mcp = FastMCP("LoreBoundaryServer", host="0.0.0.0", port=8001)
 DB_FILE = "game_state.db"
 
 def init_db():
-    """Initializes the SQLite database with game lore and map status tables."""
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    
-    #Create tables
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS locations (
-            id TEXT PRIMARY KEY,
-            name TEXT,
-            is_safe_zone BOOLEAN,
-            description TEXT,
-            syndicate_presence BOOLEAN
-        )
-    """)
-    
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS players (
-            id TEXT PRIMARY KEY,
-            name TEXT,
-            health INTEGER,
-            status TEXT,
-            credits INTEGER,
-            current_location_id TEXT,
-            inventory TEXT,
-            active_puzzle TEXT,
-            FOREIGN KEY (current_location_id) REFERENCES locations(id)
-        )
-    """)
+    """Initializes the database with game lore and map status tables (supports SQLite and PostgreSQL)."""
+    init_tables()
+
+    conn = get_connection()
+    cursor = get_cursor(conn)
 
     #Seed Data if empty
     cursor.execute("SELECT COUNT(*) FROM players")
-    if cursor.fetchone()[0] == 0:
+    row = cursor.fetchone()
+    count = row[0] if isinstance(row, tuple) else row['count']
+
+    if count == 0:
         print("Seeding initial game state data...")
         #Locations
-        cursor.executemany('''
+        param_style = '%s' if USE_POSTGRES else '?'
+        cursor.executemany(f'''
             INSERT INTO locations (id, name, is_safe_zone, description, syndicate_presence)
-            VALUES (?, ?, ?, ?, ?)
+            VALUES ({param_style}, {param_style}, {param_style}, {param_style}, {param_style})
         ''', [
             ('loc_001', 'Neon District', False, 'A gritty, neon-lit slum. High gang activity. A good place to lay low, but dangerous to linger.', False),
             ('loc_002', 'The Safehouse', True, 'A secure, encrypted bunker. No hostile entities can track you here.', False),
@@ -53,16 +35,19 @@ def init_db():
             ('loc_004', 'The Black Market', True, 'An underground bazaar for smugglers and fixers.', False),
             ('loc_005', 'The Extraction Rooftop', True, 'A hidden rooftop with a helicopter pad. The only way off the map.', False)
         ])
-        
+
         #Player (Starts with 250 credits to balance the 400 credit goal)
-        cursor.execute('''
+        param_style = '%s' if USE_POSTGRES else '?'
+        cursor.execute(f'''
             INSERT INTO players (id, name, health, status, credits, current_location_id, inventory, active_puzzle)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES ({param_style}, {param_style}, {param_style}, {param_style}, {param_style}, {param_style}, {param_style}, {param_style})
         ''', ('player_1', 'Operative', 100, 'Active', 250, 'loc_001', '[]', None))
 
     conn.commit()
+    cursor.close()
     conn.close()
-    print("Database initialized successfully.")
+    db_type = 'PostgreSQL' if USE_POSTGRES else 'SQLite'
+    print(f"✅ Database initialized successfully ({db_type}).")
 
 async def run_db_op(func, *args):
     return await asyncio.to_thread(func, *args)
