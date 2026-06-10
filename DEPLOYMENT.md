@@ -191,3 +191,4 @@ For deployment issues:
 - **Render**: Check logs in Render Dashboard → Your Service → "Logs"
 - **Vercel**: Check logs in Vercel Dashboard → Your Project → "Deployments"
 - **API Keys**: Ensure your API key limits haven't been exceeded
+-----------------------------
