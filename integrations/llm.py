@@ -3,23 +3,23 @@ import os
 import re
 import json
 import asyncio
-from anthropic import AsyncAnthropic
+import httpx
 # Import tools and physics from the server file
 from mcp_server import (
-    get_player_state, 
-    transfer_credits, 
-    move_location, 
-    grant_item, 
-    reset_game_state, 
-    adjust_credits, 
-    adjust_health, 
+    get_player_state,
+    transfer_credits,
+    move_location,
+    grant_item,
+    reset_game_state,
+    adjust_credits,
+    adjust_health,
     apply_ambient_hazards,
     end_game
 )
 
 class ConstrainedLLM:
     def __init__(self):
-        self.client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        self.modal_endpoint = "https://abhishekghaisas--broker-llm-lm-endpoint.modal.run"
         self.chat_history = []
         
         # --- 1. THE UPDATED PRIME DIRECTIVE ---
@@ -142,6 +142,16 @@ What's your play?</voice>
             tail = text.rsplit("<voice>", 1)[1]
             content = f"{content} {tail}".strip() if content else tail
         return content
+
+    def _extract_voice_text(self, content_blocks):
+        """Extract voice text from Claude response content blocks."""
+        text_parts = []
+        for block in content_blocks:
+            if hasattr(block, "text"):
+                text_parts.append(block.text)
+            elif isinstance(block, dict) and block.get("type") == "text":
+                text_parts.append(block.get("text", ""))
+        return "\n".join(text_parts)
 
     async def stream_to_tts_queue(self, stream, tts_queue):
         """Streams <voice> dialogue to TTS one sentence at a time as it arrives.
@@ -365,15 +375,39 @@ What's your play?</voice>
                 live_state = await self.get_live_context()
                 dynamic_prompt = f"{self.system_prompt}\n\n[LIVE TELEMETRY]: {live_state}"
 
-                async with self.client.messages.stream(
-                    model="claude-haiku-4-5-20251001",
-                    max_tokens=500,
-                    system=dynamic_prompt,
-                    messages=self.chat_history,
-                    tools=self.tools,
-                ) as stream:
-                    full_text = await self.stream_to_tts_queue(stream, tts_queue)
-                    final_message = await stream.get_final_message()
+                # Call Modal endpoint for Claude LLM
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    response = await client.post(
+                        self.modal_endpoint,
+                        json={
+                            "system_prompt": dynamic_prompt,
+                            "messages": self.chat_history,
+                            "tools": self.tools,
+                            "model": "claude-3-5-sonnet-20241022",
+                        },
+                    )
+                    response.raise_for_status()
+                    modal_response = response.json()
+
+                if not modal_response.get("success"):
+                    raise Exception(f"Modal error: {modal_response.get('error')}")
+
+                # Extract Claude's response
+                result = modal_response["result"]
+                full_text = self._extract_voice_text(result["content"])
+
+                # Queue voice text to TTS
+                voice_text = self._voice_content(full_text)
+                if voice_text:
+                    await tts_queue.put({"type": "tts", "content": voice_text})
+
+                # Create a mock final_message object for compatibility
+                class MockFinalMessage:
+                    def __init__(self, content, stop_reason):
+                        self.content = content
+                        self.stop_reason = stop_reason
+
+                final_message = MockFinalMessage(result["content"], result["stop_reason"])
 
                 # Persist the assistant turn verbatim (text + any tool_use blocks)
                 # and route any puzzle UI this turn produced.
