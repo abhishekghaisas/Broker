@@ -6,9 +6,13 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from broker.router import router as broker_router
+from mcp_server import init_db
 
 #Initialize non-blocking Python backend
 app = FastAPI(title="Broker")
+
+# Initialize database on startup
+init_db()
 
 # CORS configuration for local dev and production
 allowed_origins = [

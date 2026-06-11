@@ -1,11 +1,7 @@
 import asyncio
 import sqlite3
 import random
-from mcp.server.fastmcp import FastMCP
 from db import get_connection, get_cursor, init_tables, USE_POSTGRES
-
-#Initialize FastMCP Server
-mcp = FastMCP("LoreBoundaryServer", host="0.0.0.0", port=8001)
 
 DB_FILE = "game_state.db"
 
@@ -19,7 +15,7 @@ def init_db():
     #Seed Data if empty
     cursor.execute("SELECT COUNT(*) FROM players")
     row = cursor.fetchone()
-    count = row[0] if isinstance(row, tuple) else row['count']
+    count = row[0]  # Works for both SQLite and PostgreSQL
 
     if count == 0:
         print("Seeding initial game state data...")
@@ -92,7 +88,6 @@ def apply_ambient_hazards(player_id: str = "player_1") -> dict:
 
 #FastMCP Tools
 
-@mcp.tool()
 def get_player_state(player_id: str) -> str:
     """Retrieves the current status, health, credits, and location of the Operative."""
     conn = sqlite3.connect(DB_FILE)
@@ -108,7 +103,6 @@ def get_player_state(player_id: str) -> str:
     if not row: return "Error: Player not found."
     return f"Operative: {row[0]} | Health: {row[1]}% | Credits: {row[2]} | Location: {row[5]} (Hostile Presence: {bool(row[6])}) | Inventory: {row[4]}"
 
-@mcp.tool()
 def move_location(player_id: str, new_location_name: str) -> str:
     """Reroutes the Operative's physical coordinates."""
     conn = sqlite3.connect(DB_FILE)
@@ -123,7 +117,6 @@ def move_location(player_id: str, new_location_name: str) -> str:
     conn.close()
     return f"Relocation successful. Operative is now at {new_location_name}."
 
-@mcp.tool()
 def transfer_credits(player_id: str, amount: int, recipient_name: str) -> str:
     """Transfers Syndicate Credits from the Operative's ledger to external parties."""
     conn = sqlite3.connect(DB_FILE)
@@ -142,7 +135,6 @@ def transfer_credits(player_id: str, amount: int, recipient_name: str) -> str:
     conn.close()
     return f"Transferred {amount} to {recipient_name}. Remaining balance: {new_balance} credits."
 
-@mcp.tool()
 def adjust_credits(player_id: str, amount: int) -> str:
     """Adjusts the player's credit balance. Positive for rewards, negative for penalties."""
     conn = sqlite3.connect(DB_FILE)
@@ -158,7 +150,6 @@ def adjust_credits(player_id: str, amount: int) -> str:
     conn.close()
     return f"Transaction Complete. New balance: {new_balance} Credits"
 
-@mcp.tool()
 def adjust_health(player_id: str, amount: int) -> str:
     """Adjusts player health. Negative for damage, positive for heal."""
     conn = sqlite3.connect(DB_FILE)
@@ -175,7 +166,6 @@ def adjust_health(player_id: str, amount: int) -> str:
     if new_health == 0: return "CRITICAL: Player health has reached 0. Operative is deceased."
     return f"Vitals updated. Current health: {new_health}%."
 
-@mcp.tool()
 def grant_item(player_id: str, item_name: str) -> str:
     """Adds a specific item to the Operative's inventory."""
     conn = sqlite3.connect(DB_FILE)
@@ -194,7 +184,6 @@ def grant_item(player_id: str, item_name: str) -> str:
     conn.close()
     return f"Item '{item_name}' added to inventory."
 
-@mcp.tool()
 def reset_game_state() -> str:
     """Resets the Operative's status, inventory, credits, and location to the initial default state."""
     conn = sqlite3.connect(DB_FILE)
@@ -207,7 +196,6 @@ def reset_game_state() -> str:
     conn.commit()
     conn.close()
     return "Game state has been reset to initial conditions."
-@mcp.tool()
 def end_game() -> str:
     """Ends the game session and provides a final summary of the player's journey."""
     conn = sqlite3.connect(DB_FILE)
@@ -224,7 +212,3 @@ def end_game() -> str:
     summary = f"Final Summary for {row[0]}:\nHealth: {row[1]}%\nCredits: {row[2]}\nStatus: {row[3]}\nLocation: {row[5]}\nInventory: {row[4]}"
     return summary
 
-if __name__ == "__main__":
-    init_db()
-    print("Zero-Knowledge MCP Server Booting Up....")
-    mcp.run()
