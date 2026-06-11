@@ -383,7 +383,7 @@ What's your play?</voice>
                             "system_prompt": dynamic_prompt,
                             "messages": self.chat_history,
                             "tools": self.tools,
-                            "model": "claude-3-5-sonnet-20241022",
+                            "model": "claude-haiku-4-5-20251001",
                         },
                     )
                     response.raise_for_status()
