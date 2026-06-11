@@ -2,16 +2,16 @@
 
 // Determine backend URL based on environment
 const BACKEND_URL = (() => {
-    const env = window.location.hostname;
+    const hostname = window.location.hostname;
 
     // Production (Vercel domain)
-    if (env.includes('vercel.app') || (typeof process !== 'undefined' && process.env.NODE_ENV === 'production')) {
+    if (hostname.includes('vercel.app') || (typeof process !== 'undefined' && process.env.NODE_ENV === 'production')) {
         // Get from window variable or environment
-        return window.BROKER_BACKEND_URL || 'https://broker-backend.onrender.com';
+        return window.BROKER_BACKEND_URL || 'https://broker-7gxx.onrender.com';
     }
 
-    // Local development
-    return 'http://localhost:8000';
+    // Local development (localhost on port 8080)
+    return 'http://localhost:8080';
 })();
 
 const WS_URL = BACKEND_URL.replace(/^http/, 'ws');
