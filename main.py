@@ -46,6 +46,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/")
+async def health():
+    return {"status": "ok", "service": "Broker Backend"}
+
 #Mount modularized broker router
 app.include_router(broker_router)
 
