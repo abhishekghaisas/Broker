@@ -2,7 +2,6 @@ annotated-doc==0.0.4
 annotated-types==0.7.0
 anthropic==0.105.2
 anyio==4.13.0
-asyncio==4.0.0
 attrs==26.1.0
 certifi==2026.5.20
 cffi==2.0.0
@@ -19,10 +18,8 @@ idna==3.17
 jiter==0.15.0
 jsonschema==4.26.0
 jsonschema-specifications==2025.9.1
-mcp==1.27.2
 pycparser==3.0
 pydantic==2.13.4
-pydantic-settings==2.14.1
 pydantic_core==2.46.4
 PyJWT==2.13.0
 python-dotenv==1.2.2
