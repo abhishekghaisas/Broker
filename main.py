@@ -12,6 +12,15 @@ app = FastAPI(title="Broker")
 
 # CORS configuration for local dev and production
 allowed_origins = [
+    # Production
+    "https://project-9ldm3.vercel.app",
+    "https://broker.vercel.app",  # fallback custom domain
+    # Local development (new ports)
+    "http://localhost:3001",
+    "http://localhost:8080",
+    "http://127.0.0.1:3001",
+    "http://127.0.0.1:8080",
+    # Local development (old ports - fallback)
     "http://localhost:3000",
     "http://localhost:8000",
     "http://127.0.0.1:3000",
