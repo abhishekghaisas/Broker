@@ -384,7 +384,7 @@ What's your play?</voice>
 
                 # Call LLM (Modal in production, direct Claude for local dev)
                 if self.use_modal:
-                    # Production: Call Modal endpoint
+                    # Production: Call Modal endpoint with prompt caching
                     async with httpx.AsyncClient(timeout=30.0) as client:
                         response = await client.post(
                             self.modal_endpoint,
@@ -392,7 +392,7 @@ What's your play?</voice>
                                 "system_prompt": dynamic_prompt,
                                 "messages": self.chat_history,
                                 "tools": self.tools,
-                                "model": "claude-haiku-4-5-20251001",
+                                "cache_control": True,  # Enable prompt caching
                             },
                         )
                         response.raise_for_status()
@@ -418,11 +418,17 @@ What's your play?</voice>
 
                     final_message = MockFinalMessage(result["content"], result["stop_reason"])
                 else:
-                    # Local dev: Use direct Claude API (original behavior)
+                    # Local dev: Use direct Claude API with prompt caching
                     async with self.client.messages.stream(
                         model="claude-haiku-4-5-20251001",
                         max_tokens=500,
-                        system=dynamic_prompt,
+                        system=[
+                            {
+                                "type": "text",
+                                "text": dynamic_prompt,
+                                "cache_control": {"type": "ephemeral"},
+                            }
+                        ],
                         messages=self.chat_history,
                         tools=self.tools,
                     ) as stream:
