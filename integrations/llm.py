@@ -4,6 +4,7 @@ import re
 import json
 import asyncio
 import httpx
+from anthropic import AsyncAnthropic
 # Import tools and physics from the server file
 from mcp_server import (
     get_player_state,
@@ -19,7 +20,13 @@ from mcp_server import (
 
 class ConstrainedLLM:
     def __init__(self):
+        self.use_modal = os.getenv("RENDER") == "true"  # Only use Modal in production
         self.modal_endpoint = "https://abhishekghaisas--broker-llm-lm-endpoint.modal.run"
+
+        # Fallback to direct Claude for local dev
+        if not self.use_modal:
+            self.client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
         self.chat_history = []
         
         # --- 1. THE UPDATED PRIME DIRECTIVE ---
@@ -375,39 +382,52 @@ What's your play?</voice>
                 live_state = await self.get_live_context()
                 dynamic_prompt = f"{self.system_prompt}\n\n[LIVE TELEMETRY]: {live_state}"
 
-                # Call Modal endpoint for Claude LLM
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    response = await client.post(
-                        self.modal_endpoint,
-                        json={
-                            "system_prompt": dynamic_prompt,
-                            "messages": self.chat_history,
-                            "tools": self.tools,
-                            "model": "claude-haiku-4-5-20251001",
-                        },
-                    )
-                    response.raise_for_status()
-                    modal_response = response.json()
+                # Call LLM (Modal in production, direct Claude for local dev)
+                if self.use_modal:
+                    # Production: Call Modal endpoint
+                    async with httpx.AsyncClient(timeout=30.0) as client:
+                        response = await client.post(
+                            self.modal_endpoint,
+                            json={
+                                "system_prompt": dynamic_prompt,
+                                "messages": self.chat_history,
+                                "tools": self.tools,
+                                "model": "claude-haiku-4-5-20251001",
+                            },
+                        )
+                        response.raise_for_status()
+                        modal_response = response.json()
 
-                if not modal_response.get("success"):
-                    raise Exception(f"Modal error: {modal_response.get('error')}")
+                    if not modal_response.get("success"):
+                        raise Exception(f"Modal error: {modal_response.get('error')}")
 
-                # Extract Claude's response
-                result = modal_response["result"]
-                full_text = self._extract_voice_text(result["content"])
+                    # Extract Claude's response
+                    result = modal_response["result"]
+                    full_text = self._extract_voice_text(result["content"])
 
-                # Queue voice text to TTS
-                voice_text = self._voice_content(full_text)
-                if voice_text:
-                    await tts_queue.put({"type": "tts", "content": voice_text})
+                    # Queue voice text to TTS
+                    voice_text = self._voice_content(full_text)
+                    if voice_text:
+                        await tts_queue.put({"type": "tts", "content": voice_text})
 
-                # Create a mock final_message object for compatibility
-                class MockFinalMessage:
-                    def __init__(self, content, stop_reason):
-                        self.content = content
-                        self.stop_reason = stop_reason
+                    # Create a mock final_message object for compatibility
+                    class MockFinalMessage:
+                        def __init__(self, content, stop_reason):
+                            self.content = content
+                            self.stop_reason = stop_reason
 
-                final_message = MockFinalMessage(result["content"], result["stop_reason"])
+                    final_message = MockFinalMessage(result["content"], result["stop_reason"])
+                else:
+                    # Local dev: Use direct Claude API (original behavior)
+                    async with self.client.messages.stream(
+                        model="claude-haiku-4-5-20251001",
+                        max_tokens=500,
+                        system=dynamic_prompt,
+                        messages=self.chat_history,
+                        tools=self.tools,
+                    ) as stream:
+                        full_text = await self.stream_to_tts_queue(stream, tts_queue)
+                        final_message = await stream.get_final_message()
 
                 # Persist the assistant turn verbatim (text + any tool_use blocks)
                 # and route any puzzle UI this turn produced.
