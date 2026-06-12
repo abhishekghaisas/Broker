@@ -3,7 +3,6 @@ import os
 import re
 import json
 import asyncio
-import httpx
 from anthropic import AsyncAnthropic
 # Import tools and physics from the server file
 from mcp_server import (
@@ -20,13 +19,7 @@ from mcp_server import (
 
 class ConstrainedLLM:
     def __init__(self):
-        self.use_modal = os.getenv("RENDER") == "true"  # Only use Modal in production
-        self.modal_endpoint = "https://abhishekghaisas--broker-llm-lm-endpoint.modal.run"
-
-        # Fallback to direct Claude for local dev
-        if not self.use_modal:
-            self.client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-
+        self.client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
         self.chat_history = []
         
         # --- 1. THE UPDATED PRIME DIRECTIVE ---
@@ -160,14 +153,10 @@ What's your play?</voice>
                 text_parts.append(block.get("text", ""))
         return "\n".join(text_parts)
 
-    async def stream_to_tts_queue(self, stream, tts_queue):
-        """Streams <voice> dialogue to TTS one sentence at a time as it arrives.
+    async def stream_to_browser_tts(self, stream, ui_queue):
+        """Streams <voice> dialogue to browser TTS one sentence at a time as it arrives.
 
-        We track how many characters of voice text have already been enqueued
-        (`flushed`) and only ever send NEW, sentence-complete text — so a sentence
-        is spoken exactly once even though tags and sentences span many tokens.
-        text_stream yields only assistant text deltas (no tool-input JSON), so this
-        is safe on a tool-enabled stream.
+        Extracts voice text and sends it to the frontend for browser speech synthesis.
         """
         full_text = ""
         flushed = 0  # chars of voice content already enqueued
@@ -186,13 +175,13 @@ What's your play?</voice>
             cut = boundaries[-1].end()
             chunk = unflushed[:cut].strip()
             if chunk:
-                await tts_queue.put(chunk)
+                await ui_queue.put({"type": "speak", "text": chunk})
             flushed += cut
 
         # Flush any trailing voice text that never got terminal punctuation.
         remainder = self._voice_content(full_text)[flushed:].strip()
         if remainder:
-            await tts_queue.put(remainder)
+            await ui_queue.put({"type": "speak", "text": remainder})
 
         return full_text
 
@@ -358,7 +347,7 @@ What's your play?</voice>
             print(f"⚠️ [Loss Check Error]: {e}")
             return False
 
-    async def generate_response(self, text_prompt, tts_queue, ui_queue):
+    async def generate_response(self, text_prompt, ui_queue):
         try:
             print("🧠 [Cognition] Initiating neural link...")
 
@@ -371,7 +360,7 @@ What's your play?</voice>
             self.chat_history.append({"role": "user", "content": text_prompt})
 
             # Single tool-use loop: every turn is streamed, so <voice> dialogue
-            # reaches TTS with minimal latency and <terminal> puzzles are dispatched
+            # reaches browser TTS with minimal latency and <terminal> puzzles are dispatched
             # to the UI on every turn — including the turn that requests tools. We
             # keep looping while the model keeps asking for tools, capped to avoid
             # runaway loops.
@@ -382,58 +371,22 @@ What's your play?</voice>
                 live_state = await self.get_live_context()
                 dynamic_prompt = f"{self.system_prompt}\n\n[LIVE TELEMETRY]: {live_state}"
 
-                # Call LLM (Modal in production, direct Claude for local dev)
-                if self.use_modal:
-                    # Production: Call Modal endpoint with prompt caching
-                    async with httpx.AsyncClient(timeout=30.0) as client:
-                        response = await client.post(
-                            self.modal_endpoint,
-                            json={
-                                "system_prompt": dynamic_prompt,
-                                "messages": self.chat_history,
-                                "tools": self.tools,
-                                "cache_control": True,  # Enable prompt caching
-                            },
-                        )
-                        response.raise_for_status()
-                        modal_response = response.json()
-
-                    if not modal_response.get("success"):
-                        raise Exception(f"Modal error: {modal_response.get('error')}")
-
-                    # Extract Claude's response
-                    result = modal_response["result"]
-                    full_text = self._extract_voice_text(result["content"])
-
-                    # Queue voice text to TTS
-                    voice_text = self._voice_content(full_text)
-                    if voice_text:
-                        await tts_queue.put({"type": "tts", "content": voice_text})
-
-                    # Create a mock final_message object for compatibility
-                    class MockFinalMessage:
-                        def __init__(self, content, stop_reason):
-                            self.content = content
-                            self.stop_reason = stop_reason
-
-                    final_message = MockFinalMessage(result["content"], result["stop_reason"])
-                else:
-                    # Local dev: Use direct Claude API with prompt caching
-                    async with self.client.messages.stream(
-                        model="claude-haiku-4-5-20251001",
-                        max_tokens=500,
-                        system=[
-                            {
-                                "type": "text",
-                                "text": dynamic_prompt,
-                                "cache_control": {"type": "ephemeral"},
-                            }
-                        ],
-                        messages=self.chat_history,
-                        tools=self.tools,
-                    ) as stream:
-                        full_text = await self.stream_to_tts_queue(stream, tts_queue)
-                        final_message = await stream.get_final_message()
+                # Direct Claude API with prompt caching
+                async with self.client.messages.stream(
+                    model="claude-haiku-4-5-20251001",
+                    max_tokens=500,
+                    system=[
+                        {
+                            "type": "text",
+                            "text": dynamic_prompt,
+                            "cache_control": {"type": "ephemeral"},
+                        }
+                    ],
+                    messages=self.chat_history,
+                    tools=self.tools,
+                ) as stream:
+                    full_text = await self.stream_to_browser_tts(stream, ui_queue)
+                    final_message = await stream.get_final_message()
 
                 # Persist the assistant turn verbatim (text + any tool_use blocks)
                 # and route any puzzle UI this turn produced.

@@ -5,25 +5,9 @@ import sqlite3
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 from integrations.stt import StreamingSTT
 from integrations.llm import ConstrainedLLM
-from integrations.tts import DeepgramTTS
-from integrations.classifier import intent_classifier 
+from integrations.classifier import intent_classifier
 
 router = APIRouter()
-
-def flush_queues(tts_queue, audio_out_queue):
-    """Instantly purges all remnant data to prepare for a fresh query."""
-    while not tts_queue.empty():
-        try:
-            tts_queue.get_nowait()
-            tts_queue.task_done()
-        except asyncio.QueueEmpty:
-            break
-    while not audio_out_queue.empty():
-        try:
-            audio_out_queue.get_nowait()
-            audio_out_queue.task_done()
-        except asyncio.QueueEmpty:
-            break
 
 @router.websocket("/stream")
 async def websocket_endpoint(websocket: WebSocket):
@@ -33,14 +17,11 @@ async def websocket_endpoint(websocket: WebSocket):
     # --- 1. INITIALIZE QUEUES ---
     audio_queue = asyncio.Queue()
     token_queue = asyncio.Queue()
-    tts_queue = asyncio.Queue(maxsize=10) # Queue backpressure applied
-    audio_out_queue = asyncio.Queue()
     ui_queue = asyncio.Queue()
 
     # --- 2. INITIALIZE ENGINES ---
     stt_engine = StreamingSTT()
     llm_engine = ConstrainedLLM()
-    tts_engine = DeepgramTTS()
     await stt_engine.connect()
 
     # --- 3. DEFINE BACKGROUND TASKS ---
@@ -64,14 +45,13 @@ async def websocket_endpoint(websocket: WebSocket):
 
     async def fire_cognition(prompt):
         """Runs one full classify -> LLM cognition cycle for a complete utterance."""
-        flush_queues(tts_queue, audio_out_queue)
         intent = await intent_classifier.classify(prompt)
         if intent == "ambient":
             print("🤖 [Edge Routing]: Ambient Query Detected. Bypassing LLM.")
             # Handle ambient logic here if implemented
         else:
             # Full cognitive cycle
-            await llm_engine.generate_response(prompt, tts_queue, ui_queue)
+            await llm_engine.generate_response(prompt, ui_queue)
         # Drop transcripts that accumulated while we were generating/speaking.
         drain_token_queue()
 
@@ -114,28 +94,17 @@ async def websocket_endpoint(websocket: WebSocket):
         """Prints background queue health metrics."""
         try:
             while True:
-                print(f"📊 [Telemetry] Audio: {audio_queue.qsize()} | Tokens: {token_queue.qsize()} | TTS: {tts_queue.qsize()}")
+                print(f"📊 [Telemetry] Audio: {audio_queue.qsize()} | Tokens: {token_queue.qsize()}")
                 await asyncio.sleep(5)
         except Exception:
             pass
-
-    async def send_audio_to_client():
-        """Streams TTS binary bytes to frontend for immediate playback."""
-        try:
-            while True:
-                audio_chunk = await audio_out_queue.get()
-                await websocket.send_bytes(audio_chunk)
-        except Exception as e:
-            print(f"Client Playback Error: {e}")
 
     # --- 4. SPAWN ALL TASKS ---
     stt_send_task = asyncio.create_task(stt_engine.process_audio(audio_queue))
     stt_recv_task = asyncio.create_task(stt_engine.receive_transcripts(token_queue))
     ui_task = asyncio.create_task(ui_push_task())
     llm_task = asyncio.create_task(process_cognition())
-    tts_task = asyncio.create_task(tts_engine.generate_audio(tts_queue, audio_out_queue))
     telemetry_task = asyncio.create_task(telemetry_loop())
-    playback_task = asyncio.create_task(send_audio_to_client())
 
     # --- 5. WEBSOCKET DEMUXING LOOP ---
     try:
@@ -172,9 +141,7 @@ async def websocket_endpoint(websocket: WebSocket):
         stt_recv_task.cancel()
         ui_task.cancel()
         llm_task.cancel()
-        tts_task.cancel()
         telemetry_task.cancel()
-        playback_task.cancel()
 
 
 # --- REST API ROUTES ---
