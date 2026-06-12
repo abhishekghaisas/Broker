@@ -158,13 +158,17 @@ function connectWebSocket() {
     };
 
     ws.onmessage = async (event) => {
+        const receiveTime = performance.now();
+
         // 1. DATA PLANE: Check if the incoming packet is a UI JSON String
         if (typeof event.data === "string") {
             try {
                 const uiData = JSON.parse(event.data);
-                
+                console.log(`[${receiveTime.toFixed(0)}ms] 📨 UI Message: ${uiData.type}`);
+
                 // Render the puzzle if a terminal tag is received
                 if (uiData.type === "terminal") {
+                    console.log(`[${receiveTime.toFixed(0)}ms] 🖥️ Puzzle received`);
                     const puzzleOverlay = document.getElementById('puzzle-overlay');
                     if (puzzleOverlay) {
                         puzzleOverlay.style.display = 'block';
@@ -173,32 +177,37 @@ function connectWebSocket() {
                 }
 
                 if (uiData.type === "system_alert") {
-                    console.warn("SYSTEM ALERT:", uiData.content);
+                    console.warn(`[${receiveTime.toFixed(0)}ms] ⚠️ SYSTEM ALERT:`, uiData.content);
                 }
 
                 // Mission won — show the congratulation window and end the session.
                 if (uiData.type === "victory") {
+                    console.log(`[${receiveTime.toFixed(0)}ms] 🎉 VICTORY`);
                     showVictory(uiData.content);
                     return;
                 }
 
                 // Mission lost — show the failure window and end the session.
                 if (uiData.type === "loss") {
+                    console.log(`[${receiveTime.toFixed(0)}ms] 💀 LOSS`);
                     showLoss(uiData.content);
                     return;
                 }
 
                 // Browser native TTS via Web Speech API
                 if (uiData.type === "speak") {
+                    console.log(`[${receiveTime.toFixed(0)}ms] 🔊 TTS: "${uiData.text.substring(0, 50)}..."`);
                     const utterance = new SpeechSynthesisUtterance(uiData.text);
                     utterance.rate = 1;
                     utterance.pitch = 1;
+                    utterance.onstart = () => console.log(`[${performance.now().toFixed(0)}ms] 🎙️ TTS started`);
+                    utterance.onend = () => console.log(`[${performance.now().toFixed(0)}ms] 🎙️ TTS ended`);
                     window.speechSynthesis.speak(utterance);
                     return;
                 }
 
                 // Force HUD to update instantly
-                updateHUD(); 
+                updateHUD();
 
             } catch (err) {
                 console.error("⚠️ [UI Parser Error]:", err);
@@ -249,6 +258,7 @@ async function startMicrophone() {
         
         processor = audioContext.createScriptProcessor(2048, 1, 1);
         
+        let lastVadTime = 0;
         processor.onaudioprocess = (e) => {
             const float32Array = e.inputBuffer.getChannelData(0);
             connectWebSocket();
@@ -261,12 +271,18 @@ async function startMicrophone() {
                     return;
                 }
 
+                const now = performance.now();
+                if (now - lastVadTime > 500) {
+                    console.log(`[${now.toFixed(0)}ms] 🎤 VAD triggered, sending audio`);
+                    lastVadTime = now;
+                }
+
                 const int16Array = new Int16Array(float32Array.length);
                 for (let i = 0; i < float32Array.length; i++) {
                     let s = Math.max(-1, Math.min(1, float32Array[i]));
                     int16Array[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
                 }
-                
+
                 if (ws && ws.readyState === WebSocket.OPEN) {
                     ws.send(int16Array.buffer);
                 }

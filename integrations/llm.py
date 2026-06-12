@@ -349,7 +349,8 @@ What's your play?</voice>
 
     async def generate_response(self, text_prompt, ui_queue):
         try:
-            print("🧠 [Cognition] Initiating neural link...")
+            gen_start = asyncio.get_event_loop().time()
+            print("🧠 [LLM] Starting generation...")
 
             # Check for loss condition before processing
             if self._check_loss_condition():
@@ -365,13 +366,15 @@ What's your play?</voice>
             # keep looping while the model keeps asking for tools, capped to avoid
             # runaway loops.
             MAX_TURNS = 5
-            for _ in range(MAX_TURNS):
+            for turn in range(MAX_TURNS):
+                turn_start = asyncio.get_event_loop().time()
                 # Refresh live telemetry before each turn so post-tool narration
                 # reflects the updated game state.
                 live_state = await self.get_live_context()
                 dynamic_prompt = f"{self.system_prompt}\n\n[LIVE TELEMETRY]: {live_state}"
 
                 # Direct Claude API with prompt caching
+                api_start = asyncio.get_event_loop().time()
                 async with self.client.messages.stream(
                     model="claude-haiku-4-5-20251001",
                     max_tokens=500,
@@ -387,6 +390,8 @@ What's your play?</voice>
                 ) as stream:
                     full_text = await self.stream_to_browser_tts(stream, ui_queue)
                     final_message = await stream.get_final_message()
+                    api_time = asyncio.get_event_loop().time() - api_start
+                    print(f"⚡ [Claude API] Turn {turn+1}: {api_time*1000:.1f}ms")
 
                 # Persist the assistant turn verbatim (text + any tool_use blocks)
                 # and route any puzzle UI this turn produced.

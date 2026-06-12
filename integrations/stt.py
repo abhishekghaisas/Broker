@@ -23,18 +23,22 @@ class StreamingSTT:
     async def process_audio(self, audio_queue: asyncio.Queue):
         """Pulls raw 20ms audio chunks from the broker queue and streams them to the STT."""
         try:
+            chunk_count = 0
             while True:
                 try:
                     chunk = await asyncio.wait_for(audio_queue.get(), timeout=3.0)
+                    chunk_count += 1
 
                     if self.connection:
                         await self.connection.send(chunk)
+                        if chunk_count % 50 == 0:
+                            print(f"🔊 [STT Stream] {chunk_count} chunks sent")
                 except asyncio.TimeoutError:
                     if self.connection:
                         keep_alive_msg = json.dumps({"type": "KeepAlive"})
                         await self.connection.send(keep_alive_msg)
         except Exception as e:
-            print(f"STT Send Error: {e}")
+            print(f"❌ STT Send Error: {e}")
 
     async def receive_transcripts(self, token_queue: asyncio.Queue):
         """Listens for returning text tokens and pushes both partial and final transcripts to the router queue."""

@@ -45,13 +45,26 @@ async def websocket_endpoint(websocket: WebSocket):
 
     async def fire_cognition(prompt):
         """Runs one full classify -> LLM cognition cycle for a complete utterance."""
+        cognition_start = time.perf_counter()
+        print(f"🧠 [Cognition Start] Prompt: '{prompt[:50]}...'")
+
+        classify_start = time.perf_counter()
         intent = await intent_classifier.classify(prompt)
+        classify_time = time.perf_counter() - classify_start
+        print(f"✅ [Classification] Intent: {intent} ({classify_time*1000:.1f}ms)")
+
         if intent == "ambient":
             print("🤖 [Edge Routing]: Ambient Query Detected. Bypassing LLM.")
-            # Handle ambient logic here if implemented
         else:
             # Full cognitive cycle
+            llm_start = time.perf_counter()
             await llm_engine.generate_response(prompt, ui_queue)
+            llm_time = time.perf_counter() - llm_start
+            print(f"✅ [LLM Response] Completed in {llm_time*1000:.1f}ms")
+
+        total_time = time.perf_counter() - cognition_start
+        print(f"✅ [Cognition Complete] Total: {total_time*1000:.1f}ms")
+
         # Drop transcripts that accumulated while we were generating/speaking.
         drain_token_queue()
 
@@ -75,10 +88,18 @@ async def websocket_endpoint(websocket: WebSocket):
                     text, timestamp, is_final, speech_final = await asyncio.wait_for(
                         token_queue.get(), timeout=timeout
                     )
+
+                    if text.strip():
+                        now = time.perf_counter()
+                        latency = (now - timestamp) * 1000
+                        print(f"📝 [STT Token] '{text}' (latency: {latency:.1f}ms, final: {is_final})")
+
                 except asyncio.TimeoutError:
                     # Transcripts went quiet — the speaker paused. Fire what we have.
                     prompt, utterance = utterance, ""
-                    await fire_cognition(prompt)
+                    if prompt:
+                        print(f"⏱️ [Silence Timeout] Utterance complete: '{prompt[:50]}...'")
+                        await fire_cognition(prompt)
                     continue
 
                 if is_final and text.strip():
@@ -86,6 +107,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 if speech_final and utterance:
                     prompt, utterance = utterance, ""
+                    print(f"🔊 [Speech Final] Utterance complete: '{prompt[:50]}...'")
                     await fire_cognition(prompt)
         except Exception as e:
             print(f"Cognition Error: {e}")
