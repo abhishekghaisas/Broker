@@ -188,6 +188,15 @@ function connectWebSocket() {
                     return;
                 }
 
+                // Browser native TTS via Web Speech API
+                if (uiData.type === "speak") {
+                    const utterance = new SpeechSynthesisUtterance(uiData.text);
+                    utterance.rate = 1;
+                    utterance.pitch = 1;
+                    window.speechSynthesis.speak(utterance);
+                    return;
+                }
+
                 // Force HUD to update instantly
                 updateHUD(); 
 
