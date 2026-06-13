@@ -197,12 +197,34 @@ function connectWebSocket() {
                 // Browser native TTS via Web Speech API
                 if (uiData.type === "speak") {
                     console.log(`[${receiveTime.toFixed(0)}ms] 🔊 TTS: "${uiData.text.substring(0, 50)}..."`);
-                    const utterance = new SpeechSynthesisUtterance(uiData.text);
-                    utterance.rate = 1;
-                    utterance.pitch = 1;
-                    utterance.onstart = () => console.log(`[${performance.now().toFixed(0)}ms] 🎙️ TTS started`);
-                    utterance.onend = () => console.log(`[${performance.now().toFixed(0)}ms] 🎙️ TTS ended`);
-                    window.speechSynthesis.speak(utterance);
+                    try {
+                        if (!window.speechSynthesis) {
+                            console.error("❌ speechSynthesis not available in this browser");
+                            return;
+                        }
+
+                        const utterance = new SpeechSynthesisUtterance(uiData.text);
+                        utterance.rate = 1;
+                        utterance.pitch = 1;
+
+                        utterance.onstart = () => {
+                            console.log(`[${performance.now().toFixed(0)}ms] 🎙️ TTS started`);
+                        };
+
+                        utterance.onend = () => {
+                            console.log(`[${performance.now().toFixed(0)}ms] 🎙️ TTS ended`);
+                        };
+
+                        utterance.onerror = (event) => {
+                            console.error(`❌ TTS Error: ${event.error}`);
+                        };
+
+                        console.log(`[${performance.now().toFixed(0)}ms] 📢 Calling speechSynthesis.speak()`);
+                        window.speechSynthesis.speak(utterance);
+                        console.log(`[${performance.now().toFixed(0)}ms] ✅ speechSynthesis.speak() called`);
+                    } catch (err) {
+                        console.error(`❌ TTS Exception: ${err.message}`);
+                    }
                     return;
                 }
 
