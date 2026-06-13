@@ -16,8 +16,9 @@ init_db()
 
 # CORS configuration for local dev and production
 allowed_origins = [
-    # Production (Vercel)
-    "https://project-9ldm3-nczcsk7c4-abhishekghaisas-projects.vercel.app",
+    # Production (Vercel) - allow all Vercel preview/production domains
+    "https://project-9ldm3-mvnc1perz-abhishekghaisas-projects.vercel.app",  # Current preview
+    "https://project-9ldm3-nczcsk7c4-abhishekghaisas-projects.vercel.app",  # Old preview
     "https://project-9ldm3.vercel.app",
     "https://broker.vercel.app",  # fallback custom domain
     # Local development (new ports)
@@ -37,6 +38,9 @@ vercel_domain = os.getenv("VERCEL_FRONTEND_URL")
 if vercel_domain:
     allowed_origins.append(f"https://{vercel_domain}")
     allowed_origins.append(f"http://{vercel_domain}")
+
+# Add ANY Vercel preview domain (*.vercel.app) for flexibility
+allowed_origins.append("https://*.vercel.app")
 
 app.add_middleware(
     CORSMiddleware,
