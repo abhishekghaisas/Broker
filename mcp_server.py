@@ -53,36 +53,51 @@ async def run_db_op(func, *args):
 
 def apply_ambient_hazards(player_id: str = "player_1") -> dict:
     """
-    Acts as a background game tick. Checks the player's location and 
+    Acts as a background game tick. Checks the player's location and
     randomly applies damage if they are in a Syndicate-heavy zone.
+    Increased damage in compromised locations where terminals were hacked.
     """
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    
+
     cursor.execute('''
-        SELECT p.health, l.syndicate_presence, l.name 
+        SELECT p.health, p.compromised_locations, l.syndicate_presence, l.name
         FROM players p
         JOIN locations l ON p.current_location_id = l.id
         WHERE p.id = ?
     ''', (player_id,))
-    
+
     row = cursor.fetchone()
     if not row:
         conn.close()
         return {"damage_taken": 0, "status": "Error: Player not found"}
-        
-    current_health, syndicate_presence, location_name = row
+
+    current_health, compromised_json, syndicate_presence, location_name = row
+    compromised = json.loads(compromised_json or "[]")
     damage_taken = 0
-    
-    #The Math Formula: 30% chance to take 5 to 15 damage in hostile zones
+
+    # Check if location is compromised (terminal hack detected)
+    is_compromised = location_name in compromised
+
     if syndicate_presence:
-        if random.random() < 0.30: # 30% probability
-            damage_taken = random.randint(5, 15)
-            new_health = max(0, current_health - damage_taken)
-            
-            cursor.execute("UPDATE players SET health = ? WHERE id = ?", (new_health, player_id))
-            conn.commit()
-            
+        # Increased danger in compromised locations
+        if is_compromised:
+            # 40% chance (up from 30%), higher damage (15-25)
+            if random.random() < 0.40:
+                damage_taken = random.randint(15, 25)
+                new_health = max(0, current_health - damage_taken)
+
+                cursor.execute("UPDATE players SET health = ? WHERE id = ?", (new_health, player_id))
+                conn.commit()
+        else:
+            # Standard 30% chance, normal damage (5-15)
+            if random.random() < 0.30:
+                damage_taken = random.randint(5, 15)
+                new_health = max(0, current_health - damage_taken)
+
+                cursor.execute("UPDATE players SET health = ? WHERE id = ?", (new_health, player_id))
+                conn.commit()
+
     conn.close()
     return {"damage_taken": damage_taken, "location": location_name}
 

@@ -64,7 +64,11 @@ As the Game Master, you must autonomously challenge the player using ONE of the 
 1. Data Slicing (Logic/Hacking Check) — SYNDICATE TOWER ONLY:
     * Trigger: When the player is in Syndicate Tower and attempts to bypass a locked door or decrypt a file.
     * Execution: Present a thematic logic puzzle. Give the player 2 to 3 attempts.
-    * Outcome: If successful, call `adjust_credits` (+20 to +40). If failed, lock system and call `adjust_credits` (-15 to -25).
+    * Outcome: If successful, call `adjust_credits` (+20 to +40) AND call `mark_location_compromised` with "Syndicate Tower". If failed, lock system and call `adjust_credits` (-15 to -25).
+    * COMPROMISED LOCATION MECHANIC: Once Syndicate Tower is compromised (terminal hacked), future visits become MORE DANGEROUS:
+      - Ambient hazard damage increases from 5-15 to 15-25 per hit.
+      - Hazard trigger chance increases from 30% to 40%.
+      - Narrate the heightened security response: "Syndicate drones detect your presence. Increased hostility."
     * CRITICAL: Do NOT offer Data Slicing puzzles in any other location.
 
 2. Negotiations (Social Check) — NEON DISTRICT ONLY:
@@ -123,6 +127,7 @@ USE VARIATIONS OF THE ABOVE EXAMPLES TO CREATE UNIQUE RESPONSES FOR EACH SCENARI
             {"name": "reset_game_state", "description": "Reset the game to its initial state", "input_schema": {"type": "object", "properties": {}}},
             {"name": "apply_ambient_hazards", "description": "Apply environmental hazards based on current location", "input_schema": {"type": "object", "properties": {}}},
             {"name": "npc_failed_negotiation", "description": "Track a failed NPC negotiation and apply consequences. Call this when a negotiation tactic fails. Returns the NPC's reaction and any damage.", "input_schema": {"type": "object", "properties": {"npc_name": {"type": "string"}}, "required": ["npc_name"]}},
+            {"name": "mark_location_compromised", "description": "Mark a location as compromised after successfully hacking a terminal there. Future visits will have increased hazard damage.", "input_schema": {"type": "object", "properties": {"location_name": {"type": "string"}}, "required": ["location_name"]}},
             {"name": "end_game", "description": "End the current game session", "input_schema": {"type": "object", "properties": {}}}
         ]
 
@@ -315,6 +320,19 @@ USE VARIATIONS OF THE ABOVE EXAMPLES TO CREATE UNIQUE RESPONSES FOR EACH SCENARI
                     out = f"{result['message']} {npc_name} dealt {damage} damage."
                 else:
                     out = result['message']
+
+            # Mark location as compromised after successful terminal hack
+            elif name == "mark_location_compromised":
+                location_name = tool_input.get("location_name", "")
+                c.execute("SELECT compromised_locations FROM players WHERE id = 'player_1'")
+                row = c.fetchone()
+                compromised = json.loads(row[0] or "[]") if row else []
+                if location_name not in compromised:
+                    compromised.append(location_name)
+                c.execute("UPDATE players SET compromised_locations = ? WHERE id = 'player_1'",
+                         (json.dumps(compromised),))
+                conn.commit()
+                out = f"Location '{location_name}' is now flagged as compromised. Future visits will be more dangerous."
 
             # Process Hard Reset
             elif name == "reset_game_state":
