@@ -189,7 +189,8 @@ function connectWebSocket() {
 
                 // Mission lost — show the failure window and end the session.
                 if (uiData.type === "loss") {
-                    console.log(`[${receiveTime.toFixed(0)}ms] 💀 LOSS`);
+                    console.log(`[${receiveTime.toFixed(0)}ms] 💀 LOSS DETECTED`);
+                    console.log(`[${receiveTime.toFixed(0)}ms] 💀 Loss message:`, uiData.content);
                     showLoss(uiData.content);
                     return;
                 }

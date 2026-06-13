@@ -358,7 +358,9 @@ What's your play?</voice>
             # Check for loss condition before processing
             if self._check_loss_condition():
                 loss_msg = "MISSION CRITICAL FAILURE: Operative health critically compromised with insufficient funds for extraction protocol. Evacuation denied."
+                print(f"💀 [Loss Condition Triggered] Sending loss message to UI queue")
                 await ui_queue.put({"type": "loss", "content": loss_msg})
+                print(f"💀 [Loss Message Queued] Message sent: {loss_msg}")
                 return
 
             self.chat_history.append({"role": "user", "content": text_prompt})
