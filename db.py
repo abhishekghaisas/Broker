@@ -104,6 +104,8 @@ def init_tables():
                 current_location_id TEXT,
                 inventory TEXT,
                 active_puzzle TEXT,
+                npc_encounters TEXT,
+                compromised_locations TEXT,
                 FOREIGN KEY (current_location_id) REFERENCES locations(id)
             )
         """)

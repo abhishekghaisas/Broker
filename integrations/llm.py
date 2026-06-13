@@ -3,6 +3,7 @@ import os
 import re
 import json
 import asyncio
+import random
 from anthropic import AsyncAnthropic
 # Import tools and physics from the server file
 from mcp_server import (
@@ -14,7 +15,9 @@ from mcp_server import (
     adjust_credits,
     adjust_health,
     apply_ambient_hazards,
-    end_game
+    end_game,
+    track_npc_aggravation,
+    reset_npc_aggravation_for_location
 )
 
 class ConstrainedLLM:
@@ -71,7 +74,12 @@ As the Game Master, you must autonomously challenge the player using ONE of the 
       - Tactic B: Flattery (appeal to ego, praise, respect)
       - Tactic C: Logic (appeal to reason, mutual benefit, deal-making)
       Use <social_intel> tags for NPC description, then explicitly list all three tactics with brief descriptions so the player can choose. Never say "You can:" without completing the list.
-    * Outcome: If the chosen tactic succeeds (call `adjust_credits` +15 to +30), narrate the NPC's response to that approach. If it fails (call `adjust_credits` -20 to -30), narrate why the NPC rejected that tactic.
+    * Outcome: If the chosen tactic succeeds (call `adjust_credits` +15 to +30), narrate the NPC's response. If it fails, MUST call `npc_failed_negotiation` with the NPC's name, then narrate why the NPC rejected that tactic and any consequences.
+    * NPC AGGRAVATION MECHANIC: The `npc_failed_negotiation` tool tracks NPC patience automatically:
+      - 1st failure: NPC annoyed but tolerant. Returns warning about not testing patience.
+      - 2nd failure: NPC aggravated. Applies 10-15 damage automatically.
+      - 3rd+ failures: NPC hostile. Applies 20-30 damage automatically, closes negotiation.
+      - Success: Call `adjust_credits` only (no aggravation tool needed).
     * CRITICAL: Do NOT offer NPC Negotiations in any other location.
     * NPC Names: You can choose from the following names for the NPC: Wade, Logan, Neo, Mercer and Lance. Try your best not to repeat the NPC names, but if the list runs out, you may make up your own.
 
@@ -114,6 +122,7 @@ USE VARIATIONS OF THE ABOVE EXAMPLES TO CREATE UNIQUE RESPONSES FOR EACH SCENARI
             {"name": "adjust_credits", "description": "Change player credits", "input_schema": {"type": "object", "properties": {"delta": {"type": "integer"}}}},
             {"name": "reset_game_state", "description": "Reset the game to its initial state", "input_schema": {"type": "object", "properties": {}}},
             {"name": "apply_ambient_hazards", "description": "Apply environmental hazards based on current location", "input_schema": {"type": "object", "properties": {}}},
+            {"name": "npc_failed_negotiation", "description": "Track a failed NPC negotiation and apply consequences. Call this when a negotiation tactic fails. Returns the NPC's reaction and any damage.", "input_schema": {"type": "object", "properties": {"npc_name": {"type": "string"}}, "required": ["npc_name"]}},
             {"name": "end_game", "description": "End the current game session", "input_schema": {"type": "object", "properties": {}}}
         ]
 
@@ -285,9 +294,27 @@ USE VARIATIONS OF THE ABOVE EXAMPLES TO CREATE UNIQUE RESPONSES FOR EACH SCENARI
                             conn.commit()
                             out = f"Location updated to: {loc_name}"
                     else:
+                        # Get current location before moving to reset NPC aggravation
+                        c.execute("SELECT l.name FROM players p JOIN locations l ON p.current_location_id = l.id WHERE p.id = 'player_1'")
+                        current_loc = c.fetchone()
+                        if current_loc:
+                            reset_npc_aggravation_for_location("player_1", current_loc[0])
+
                         c.execute("UPDATE players SET current_location_id = ? WHERE id = 'player_1'", (loc_id,))
                         conn.commit()
                         out = f"Location updated to: {loc_name}"
+
+            # Track NPC failed negotiation and apply consequences
+            elif name == "npc_failed_negotiation":
+                npc_name = tool_input.get("npc_name", "Unknown NPC")
+                result = track_npc_aggravation("player_1", npc_name, is_failed=True)
+                if result.get("damage", 0) > 0:
+                    damage = random.randint(result["damage"] - 5, result["damage"] + 5)
+                    c.execute("UPDATE players SET health = MAX(0, health - ?) WHERE id = 'player_1'", (damage,))
+                    conn.commit()
+                    out = f"{result['message']} {npc_name} dealt {damage} damage."
+                else:
+                    out = result['message']
 
             # Process Hard Reset
             elif name == "reset_game_state":

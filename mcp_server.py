@@ -1,6 +1,7 @@
 import asyncio
 import sqlite3
 import random
+import json
 from db import get_connection, get_cursor, init_tables, USE_POSTGRES
 
 DB_FILE = "game_state.db"
@@ -201,7 +202,7 @@ def end_game() -> str:
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT p.name, p.health, p.credits, p.status, p.inventory, l.name 
+        SELECT p.name, p.health, p.credits, p.status, p.inventory, l.name
         FROM players p
         JOIN locations l ON p.current_location_id = l.id
         WHERE p.id = 'player_1'
@@ -211,4 +212,54 @@ def end_game() -> str:
     if not row: return "Error: Player not found."
     summary = f"Final Summary for {row[0]}:\nHealth: {row[1]}%\nCredits: {row[2]}\nStatus: {row[3]}\nLocation: {row[5]}\nInventory: {row[4]}"
     return summary
+
+# NPC Encounter Management
+def track_npc_aggravation(player_id: str, npc_name: str, is_failed: bool) -> dict:
+    """Track NPC aggravation on failed negotiation. Returns consequences if needed."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT npc_encounters FROM players WHERE id = ?", (player_id,))
+    row = cursor.fetchone()
+    encounters = json.loads(row[0] or "{}") if row else {}
+
+    if is_failed:
+        if npc_name not in encounters:
+            encounters[npc_name] = 0
+        encounters[npc_name] += 1
+        aggravation = encounters[npc_name]
+
+        cursor.execute("UPDATE players SET npc_encounters = ? WHERE id = ?",
+                      (json.dumps(encounters), player_id))
+        conn.commit()
+        conn.close()
+
+        # Consequences based on aggravation level
+        if aggravation == 1:
+            return {"level": "annoyed", "damage": 0, "message": f"{npc_name} is annoyed. Don't push further."}
+        elif aggravation == 2:
+            return {"level": "aggravated", "damage": 10, "message": f"{npc_name} is aggravated! Takes 10-15 damage."}
+        else:
+            return {"level": "hostile", "damage": 20, "message": f"{npc_name} is hostile! Takes 20-30 damage."}
+    else:
+        # Success: reset this NPC's aggravation
+        if npc_name in encounters:
+            del encounters[npc_name]
+        cursor.execute("UPDATE players SET npc_encounters = ? WHERE id = ?",
+                      (json.dumps(encounters), player_id))
+        conn.commit()
+        conn.close()
+        return {"level": "friendly", "damage": 0, "message": f"{npc_name} is satisfied."}
+
+def reset_npc_aggravation_for_location(player_id: str, location_name: str) -> str:
+    """Reset NPC aggravation when player leaves a location."""
+    if location_name != "Neon District":
+        return "No NPCs to reset."
+
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE players SET npc_encounters = '{}' WHERE id = ?", (player_id,))
+    conn.commit()
+    conn.close()
+    return "NPC encounters reset for this location."
 
