@@ -47,16 +47,16 @@
         </div>
     </div>
 
-    <div id="puzzle-overlay" style="display: none; position: fixed; top: 20%; left: 20%; background: #1a1a1a; border: 2px solid #ff0055; padding: 20px; color: #fff; z-index: 9999; min-width: 300px;">
-        <h3>SYSTEM BREACH</h3>
-        <p id="puzzle-desc">Hacking Syndicate Terminal...</p>
-        
-        <div style="margin-top: 15px;">
-            <input type="text" id="puzzleInput" placeholder="Enter override code..." style="padding: 10px; width: 70%; background: #000; color: #0f0; border: 1px solid #ff0055; font-family: monospace;">
-            <button id="submitPuzzleBtn" style="padding: 10px; background: #0f0; color: black; border: none; cursor: pointer; font-weight: bold;">SUBMIT</button>
+    <div id="puzzle-overlay" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #1a1a1a; border: 2px solid #ff0055; padding: 25px; color: #fff; z-index: 9999; width: 80%; max-width: 700px; max-height: 80vh; overflow-y: auto; border-radius: 4px; box-shadow: 0 0 30px rgba(255,0,85,0.3);">
+        <h3 style="margin-top: 0;">SYSTEM BREACH</h3>
+        <p id="puzzle-desc" style="white-space: pre-wrap; line-height: 1.6;">Hacking Syndicate Terminal...</p>
+
+        <div style="margin-top: 20px;">
+            <input type="text" id="puzzleInput" placeholder="Enter override code..." style="padding: 10px; width: 75%; background: #000; color: #0f0; border: 1px solid #ff0055; font-family: monospace;">
+            <button id="submitPuzzleBtn" style="padding: 10px 15px; background: #0f0; color: black; border: none; cursor: pointer; font-weight: bold; margin-left: 5px;">SUBMIT</button>
         </div>
 
-        <button id="bypassBtn" style="margin-top: 15px; padding: 5px 10px; background: #333; color: white; border: 1px solid #555; cursor: pointer; font-size: 0.8em;">CLOSE TERMINAL</button>
+        <button id="bypassBtn" style="margin-top: 15px; padding: 8px 15px; background: #333; color: white; border: 1px solid #555; cursor: pointer; font-size: 0.85em; width: 100%;">CLOSE TERMINAL</button>
     </div>
 
     <div id="victory-overlay" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 10000; align-items: center; justify-content: center;">
