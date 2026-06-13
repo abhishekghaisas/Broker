@@ -73,7 +73,7 @@ As the Game Master, you must autonomously challenge the player using ONE of the 
       Use <social_intel> tags for NPC description, then explicitly list all three tactics with brief descriptions so the player can choose. Never say "You can:" without completing the list.
     * Outcome: If the chosen tactic succeeds (call `adjust_credits` +15 to +30), narrate the NPC's response to that approach. If it fails (call `adjust_credits` -20 to -30), narrate why the NPC rejected that tactic.
     * CRITICAL: Do NOT offer NPC Negotiations in any other location.
-    * NPC Names: You can choose from the following names for the NPC: Wade, Logan, Neo, Mercer and Lance. Try your best not to repeat the NPC names.
+    * NPC Names: You can choose from the following names for the NPC: Wade, Logan, Neo, Mercer and Lance. Try your best not to repeat the NPC names, but if the list runs out, you may make up your own.
 
 3. Tactical Routing (Risk vs. Reward) — ALL LOCATIONS:
     * Trigger: When the player travels between major map locations.
@@ -100,6 +100,8 @@ A) INTIMIDATION: "I can make you regret not dealing with me."
 B) FLATTERY: "Someone with your reputation could really help us."
 C) LOGIC: "We both win if you help—mutual benefit, clean transaction."
 What's your play?</voice>
+
+USE VARIATIONS OF THE ABOVE EXAMPLES TO CREATE UNIQUE RESPONSES FOR EACH SCENARIO.
 """
         # (Assuming your FastMCP tools are loaded here if applicable)
         self.tools = [
