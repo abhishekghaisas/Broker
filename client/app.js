@@ -209,14 +209,12 @@ function connectWebSocket() {
 
                         utterance.onstart = () => {
                             console.log(`[${performance.now().toFixed(0)}ms] 🎙️ TTS started`);
-                            ttsActive = true;  // Suppress mic input while speaking
                         };
 
                         utterance.onend = () => {
                             const endTime = performance.now();
                             console.log(`[${endTime.toFixed(0)}ms] 🎙️ TTS ended (grace period: 2s)`);
-                            ttsActive = false;
-                            ttsEndTime = endTime;  // Start grace period to block mic echo
+                            lastTtsEndTime = endTime;  // Start grace period to block mic echo
                         };
 
                         utterance.onerror = (event) => {
@@ -285,8 +283,7 @@ async function startMicrophone() {
         processor = audioContext.createScriptProcessor(2048, 1, 1);
         
         let lastVadTime = 0;
-        let ttsActive = false;
-        let ttsEndTime = 0;
+        let lastTtsEndTime = 0;
         const TTS_GRACE_PERIOD = 2000;  // Wait 2 seconds after TTS ends before accepting mic input
 
         processor.onaudioprocess = (e) => {
@@ -294,10 +291,10 @@ async function startMicrophone() {
             connectWebSocket();
 
             if (vad.process(float32Array)) {
-                // Half-duplex: skip capture while NOVA's TTS is playing or cooling down
-                // Grace period prevents picking up speaker echo after TTS ends
+                // Half-duplex: skip capture while ANY TTS utterance is playing or cooling down
+                // Use speechSynthesis.speaking to detect if ANY queued utterance is active
                 const now = performance.now();
-                if (ttsActive || (now - ttsEndTime < TTS_GRACE_PERIOD)) {
+                if (window.speechSynthesis.speaking || (now - lastTtsEndTime < TTS_GRACE_PERIOD)) {
                     return;
                 }
 
