@@ -396,6 +396,14 @@ What's your play?</voice>
                 # Persist the assistant turn verbatim (text + any tool_use blocks)
                 # and route any puzzle UI this turn produced.
                 self.chat_history.append({"role": "assistant", "content": final_message.content})
+
+                # Log response for debugging
+                voice_text = self._voice_content(full_text)
+                if voice_text:
+                    print(f"🔊 [Voice Output] {voice_text[:80]}...")
+                else:
+                    print(f"⚠️ [No Voice Output] Response: {full_text[:100]}...")
+
                 await self.dispatch_ui_data(full_text, ui_queue)
 
                 if final_message.stop_reason != "tool_use":
