@@ -70,47 +70,44 @@ async def websocket_endpoint(websocket: WebSocket):
 
     async def process_cognition():
         """Main AI evaluation loop."""
-        # Accumulate finalized STT segments and fire ONE cognition cycle per
-        # utterance. End-of-utterance is detected by a transcript silence gap:
-        # the frontend VAD stops sending audio during pauses, so Deepgram never
-        # sees trailing silence and rarely emits speech_final. We therefore debounce
-        # — once finals stop arriving for SILENCE_TIMEOUT, the utterance is complete.
-        # (speech_final, when it does arrive, fires immediately.) Firing on every
-        # is_final instead would launch overlapping generations on the shared chat
-        # history and repeat the response many times.
-        SILENCE_TIMEOUT = 1.0  # seconds of transcript silence => utterance complete
+        # Accumulate STT segments and fire ONE cognition cycle per utterance.
+        # End-of-utterance is detected by silence: once tokens stop arriving for
+        # SILENCE_TIMEOUT seconds, fire cognition with what we have.
+        # Accept both final and interim tokens to build utterance.
+        SILENCE_TIMEOUT = 1.5  # seconds of silence => utterance complete
         utterance = ""
+        last_token_time = time.perf_counter()
         try:
             while True:
                 try:
-                    # Only impose the silence deadline once we have buffered speech.
-                    timeout = SILENCE_TIMEOUT if utterance else None
+                    # Always use silence timeout to detect end of speech
                     text, timestamp, is_final, speech_final = await asyncio.wait_for(
-                        token_queue.get(), timeout=timeout
+                        token_queue.get(), timeout=SILENCE_TIMEOUT
                     )
 
+                    last_token_time = time.perf_counter()
                     if text.strip():
                         now = time.perf_counter()
                         latency = (now - timestamp) * 1000
                         print(f"📝 [STT Token] '{text}' (latency: {latency:.1f}ms, final: {is_final})")
+                        # Accumulate both final and interim transcripts
+                        utterance = f"{utterance} {text}".strip()
 
                 except asyncio.TimeoutError:
-                    # Transcripts went quiet — the speaker paused. Fire what we have.
+                    # Silence detected — fire cognition with accumulated text
                     prompt, utterance = utterance, ""
                     if prompt:
-                        print(f"⏱️ [Silence Timeout] Utterance complete: '{prompt[:50]}...'")
+                        print(f"⏱️ [Silence Timeout] Utterance ready: '{prompt[:50]}...'")
                         await fire_cognition(prompt)
                     continue
 
-                if is_final and text.strip():
-                    utterance = f"{utterance} {text}".strip()
-
+                # If speech_final arrives, immediately fire
                 if speech_final and utterance:
                     prompt, utterance = utterance, ""
-                    print(f"🔊 [Speech Final] Utterance complete: '{prompt[:50]}...'")
+                    print(f"🔊 [Speech Final] Utterance ready: '{prompt[:50]}...'")
                     await fire_cognition(prompt)
         except Exception as e:
-            print(f"Cognition Error: {e}")
+            print(f"❌ Cognition Error: {e}")
 
     async def telemetry_loop():
         """Prints background queue health metrics."""
