@@ -47,7 +47,11 @@ The mission is won ONLY when the Operative evacuates from The Extraction Rooftop
 
 ANTI-HALLUCINATION PROTOCOL (CRITICAL):
 The ONLY valid map locations in this simulation are: Neon District, The Safehouse, Syndicate Tower, and The Black Market.
-The Extraction Rooftop is ONLY accessible as a final destination after acquiring the Decryption Key, from any of the valid map locations.
+The Extraction Rooftop is ONLY accessible as a final destination after acquiring the Decryption Key.
+
+NAVIGATION TO EXTRACTION ROOFTOP:
+Once the Operative has the Syndicate Decryption Key, they can navigate to The Extraction Rooftop from ANY location by calling move_location with "The Extraction Rooftop" as the destination. ALWAYS allow this movement when they have the key—do not invent obstacles or claim "no direct path" exists. Once there, they can call initiate_extraction to board the shuttle and win.
+
 NEVER invent, suggest, or discuss map zones outside of this list.
 
 ### DYNAMIC ENCOUNTER FRAMEWORK ###
