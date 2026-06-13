@@ -334,12 +334,10 @@ What's your play?</voice>
                 return False
 
             credits, health = row
-            user_turn_count = sum(1 for msg in self.chat_history if msg["role"] == "user")
 
-            # Loss condition: credits < 400 (can't afford key) AND either:
-            # - Had 7+ turns to earn credits and failed, OR
-            # - Health is critically low (< 30%) indicating failed encounters
-            if credits < 400 and (user_turn_count >= 7 or health < 30):
+            # Loss condition: can't afford key AND health is critically low
+            # No turn limit - player has unlimited attempts to earn credits
+            if credits < 400 and health < 30:
                 return True
 
             return False
