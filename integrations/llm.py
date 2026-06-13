@@ -250,10 +250,12 @@ USE VARIATIONS OF THE ABOVE EXAMPLES TO CREATE UNIQUE RESPONSES FOR EACH SCENARI
             # Signed credit adjustment (rewards/penalties). delta may be negative.
             elif name == "adjust_credits":
                 val = tool_input.get("delta", tool_input.get("amount", 0))
-                c.execute("UPDATE players SET credits = MAX(0, credits + ?) WHERE id = 'player_1'", (val,))
-                conn.commit()
                 c.execute("SELECT credits FROM players WHERE id = 'player_1'")
-                out = f"Credits adjusted successfully. New balance: {c.fetchone()[0]}"
+                current_credits = c.fetchone()[0]
+                new_balance = max(0, current_credits + val)
+                c.execute("UPDATE players SET credits = ? WHERE id = 'player_1'", (new_balance,))
+                conn.commit()
+                out = f"Credits adjusted successfully. New balance: {new_balance}"
 
             # Transfer credits OUT of the ledger (a debit), with a funds check.
             elif name == "transfer_credits":
@@ -270,10 +272,21 @@ USE VARIATIONS OF THE ABOVE EXAMPLES TO CREATE UNIQUE RESPONSES FOR EACH SCENARI
             # Process Health
             elif name == "adjust_health":
                 val = tool_input.get("delta", 0)
-                c.execute("UPDATE players SET health = health + ? WHERE id = 'player_1'", (val,))
-                conn.commit()
+                print(f"❤️ [Adjust Health] Delta: {val}")
                 c.execute("SELECT health FROM players WHERE id = 'player_1'")
-                out = f"Health adjusted successfully. New health: {c.fetchone()[0]}"
+                current_health = c.fetchone()[0]
+                new_health = max(0, min(100, current_health + val))
+                print(f"❤️ [Adjust Health] {current_health} + {val} = {new_health}")
+                c.execute("UPDATE players SET health = ? WHERE id = 'player_1'", (new_health,))
+                conn.commit()
+                # Verify the update was applied
+                c.execute("SELECT health FROM players WHERE id = 'player_1'")
+                verified_health = c.fetchone()[0]
+                print(f"✅ [Adjust Health] Verified: {verified_health}")
+                if new_health == 0:
+                    out = "CRITICAL: Player health has reached 0. Operative is deceased."
+                else:
+                    out = f"Health adjusted successfully. New health: {new_health}%"
 
             # Process Movement
             elif name == "move_location":
@@ -281,12 +294,14 @@ USE VARIATIONS OF THE ABOVE EXAMPLES TO CREATE UNIQUE RESPONSES FOR EACH SCENARI
                 # column stores a location *id*. Resolve either form to the
                 # canonical id so the players<->locations JOIN keeps working.
                 requested = tool_input.get("new_location_id") or tool_input.get("new_location_name")
+                print(f"🗺️ [Move Location] Requested: {requested}")
                 c.execute("SELECT id, name FROM locations WHERE id = ? OR name = ?", (requested, requested))
                 match = c.fetchone()
                 if not match:
                     out = f"Error: Unknown location '{requested}'."
                 else:
                     loc_id, loc_name = match
+                    print(f"🗺️ [Move Location] Found: {loc_name} ({loc_id})")
                     # Gate: require Decryption Key to access The Extraction Rooftop
                     if loc_id == "loc_005":
                         c.execute("SELECT inventory FROM players WHERE id = 'player_1'")
@@ -297,16 +312,19 @@ USE VARIATIONS OF THE ABOVE EXAMPLES TO CREATE UNIQUE RESPONSES FOR EACH SCENARI
                         else:
                             c.execute("UPDATE players SET current_location_id = ? WHERE id = 'player_1'", (loc_id,))
                             conn.commit()
+                            print(f"✅ [Move Location] Updated to {loc_name}")
                             out = f"Location updated to: {loc_name}"
                     else:
-                        # Get current location before moving to reset NPC aggravation
+                        # Reset NPC aggravation for Neon District when leaving
                         c.execute("SELECT l.name FROM players p JOIN locations l ON p.current_location_id = l.id WHERE p.id = 'player_1'")
                         current_loc = c.fetchone()
-                        if current_loc:
-                            reset_npc_aggravation_for_location("player_1", current_loc[0])
+                        if current_loc and current_loc[0] == "Neon District":
+                            c.execute("UPDATE players SET npc_encounters = '{}' WHERE id = 'player_1'")
+                            print(f"🗺️ [Move Location] Reset NPC encounters for Neon District")
 
                         c.execute("UPDATE players SET current_location_id = ? WHERE id = 'player_1'", (loc_id,))
                         conn.commit()
+                        print(f"✅ [Move Location] Updated to {loc_name}")
                         out = f"Location updated to: {loc_name}"
 
             # Track NPC failed negotiation and apply consequences
@@ -315,7 +333,10 @@ USE VARIATIONS OF THE ABOVE EXAMPLES TO CREATE UNIQUE RESPONSES FOR EACH SCENARI
                 result = track_npc_aggravation("player_1", npc_name, is_failed=True)
                 if result.get("damage", 0) > 0:
                     damage = random.randint(result["damage"] - 5, result["damage"] + 5)
-                    c.execute("UPDATE players SET health = MAX(0, health - ?) WHERE id = 'player_1'", (damage,))
+                    c.execute("SELECT health FROM players WHERE id = 'player_1'")
+                    current_health = c.fetchone()[0]
+                    new_health = max(0, current_health - damage)
+                    c.execute("UPDATE players SET health = ? WHERE id = 'player_1'", (new_health,))
                     conn.commit()
                     out = f"{result['message']} {npc_name} dealt {damage} damage."
                 else:
@@ -370,8 +391,13 @@ USE VARIATIONS OF THE ABOVE EXAMPLES TO CREATE UNIQUE RESPONSES FOR EACH SCENARI
                 out = f"System acknowledged {name} directive."
 
         except Exception as e:
+            print(f"❌ [Tool Error] {name}: {str(e)}")
             out = f"Database Error: {str(e)}"
-        conn.close()
+        finally:
+            try:
+                conn.close()
+            except:
+                pass
         return out
 
     def _check_loss_condition(self):
