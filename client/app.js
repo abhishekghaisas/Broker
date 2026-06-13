@@ -213,8 +213,10 @@ function connectWebSocket() {
                         };
 
                         utterance.onend = () => {
-                            console.log(`[${performance.now().toFixed(0)}ms] 🎙️ TTS ended`);
-                            ttsActive = false;  // Resume mic input
+                            const endTime = performance.now();
+                            console.log(`[${endTime.toFixed(0)}ms] 🎙️ TTS ended (grace period: 2s)`);
+                            ttsActive = false;
+                            ttsEndTime = endTime;  // Start grace period to block mic echo
                         };
 
                         utterance.onerror = (event) => {
@@ -283,20 +285,22 @@ async function startMicrophone() {
         processor = audioContext.createScriptProcessor(2048, 1, 1);
         
         let lastVadTime = 0;
-        let ttsActive = false;  // Track if NOVA is currently speaking
+        let ttsActive = false;
+        let ttsEndTime = 0;
+        const TTS_GRACE_PERIOD = 2000;  // Wait 2 seconds after TTS ends before accepting mic input
 
         processor.onaudioprocess = (e) => {
             const float32Array = e.inputBuffer.getChannelData(0);
             connectWebSocket();
 
             if (vad.process(float32Array)) {
-                // Half-duplex: skip capture while NOVA's TTS is playing
-                // This prevents the mic from picking up NOVA's voice and causing feedback
-                if (ttsActive) {
+                // Half-duplex: skip capture while NOVA's TTS is playing or cooling down
+                // Grace period prevents picking up speaker echo after TTS ends
+                const now = performance.now();
+                if (ttsActive || (now - ttsEndTime < TTS_GRACE_PERIOD)) {
                     return;
                 }
 
-                const now = performance.now();
                 if (now - lastVadTime > 500) {
                     console.log(`[${now.toFixed(0)}ms] 🎤 VAD triggered, sending audio`);
                     lastVadTime = now;
