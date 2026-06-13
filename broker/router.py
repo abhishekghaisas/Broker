@@ -30,7 +30,12 @@ async def websocket_endpoint(websocket: WebSocket):
         try:
             while True:
                 ui_data = await ui_queue.get()
-                await websocket.send_json(ui_data)
+                print(f"📤 [UI Queue] Sending {ui_data.get('type')}: {str(ui_data)[:80]}")
+                try:
+                    await websocket.send_json(ui_data)
+                    print(f"✅ [UI Sent] {ui_data.get('type')}")
+                except Exception as send_err:
+                    print(f"❌ [UI Send Failed] {send_err}")
         except Exception as e:
             print(f"⚠️ UI Push Task Error: {e}")
 
