@@ -209,10 +209,12 @@ function connectWebSocket() {
 
                         utterance.onstart = () => {
                             console.log(`[${performance.now().toFixed(0)}ms] 🎙️ TTS started`);
+                            ttsActive = true;  // Suppress mic input while speaking
                         };
 
                         utterance.onend = () => {
                             console.log(`[${performance.now().toFixed(0)}ms] 🎙️ TTS ended`);
+                            ttsActive = false;  // Resume mic input
                         };
 
                         utterance.onerror = (event) => {
@@ -281,15 +283,16 @@ async function startMicrophone() {
         processor = audioContext.createScriptProcessor(2048, 1, 1);
         
         let lastVadTime = 0;
+        let ttsActive = false;  // Track if NOVA is currently speaking
+
         processor.onaudioprocess = (e) => {
             const float32Array = e.inputBuffer.getChannelData(0);
             connectWebSocket();
 
             if (vad.process(float32Array)) {
-                // Half-duplex: while NOVA's TTS is still playing, the speakers leak
-                // into the mic and the agent transcribes (and re-acts on) its own
-                // voice. Skip capture until scheduled playback has finished.
-                if (playbackCtx.currentTime < nextStartTime) {
+                // Half-duplex: skip capture while NOVA's TTS is playing
+                // This prevents the mic from picking up NOVA's voice and causing feedback
+                if (ttsActive) {
                     return;
                 }
 
