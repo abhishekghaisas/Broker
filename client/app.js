@@ -82,6 +82,17 @@ document.addEventListener('DOMContentLoaded', () => {
         restartLossBtn.addEventListener('click', () => location.reload());
     }
 
+    // 1d. Field Manual open/close — available from the menu and the in-game HUD.
+    const manualOverlay = document.getElementById('manual-overlay');
+    const showManual = () => { if (manualOverlay) manualOverlay.style.display = 'block'; };
+    const hideManual = () => { if (manualOverlay) manualOverlay.style.display = 'none'; };
+    ['openManualBtn', 'openManualBtnHud'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) btn.addEventListener('click', showManual);
+    });
+    const closeManualBtn = document.getElementById('closeManualBtn');
+    if (closeManualBtn) closeManualBtn.addEventListener('click', hideManual);
+
     // 2. Keyboard Input Binding
     const submitBtn = document.getElementById('submitPuzzleBtn');
     const puzzleInput = document.getElementById('puzzleInput');
