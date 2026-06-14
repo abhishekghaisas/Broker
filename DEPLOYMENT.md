@@ -31,7 +31,7 @@ This guide explains how to deploy the Broker game to production using **Render**
    - **Name**: `broker-backend`
    - **Environment**: `Python 3`
    - **Build Command**: `pip install -r requirements.txt`
-   - **Start Command**: `gunicorn main:app --workers 2 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT`
+   - **Start Command**: `gunicorn main:app --workers 1 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT`
    - **Instance Type**: Free or Starter (depending on your needs)
 
 ### 1.2 Set Environment Variables
@@ -44,13 +44,44 @@ In the Render dashboard for your service:
    ANTHROPIC_API_KEY=<your-api-key>
    DEEPGRAM_API_KEY=<your-api-key>
    VERCEL_FRONTEND_URL=<your-vercel-domain>.vercel.app
+   DATABASE_URL=<your-supabase-pooler-connection-string>
    ```
+   See [**Step 1.5: Database (Supabase PostgreSQL)**](#15-database-supabase-postgresql)
+   below for exactly which Supabase connection string to use.
 
 ### 1.3 Deploy
 
 - Click **"Create Web Service"**
 - Render will automatically deploy when you push to GitHub
 - Note your service URL (e.g., `https://broker-backend.onrender.com`)
+
+### 1.5 Database (Supabase PostgreSQL)
+
+Production persists game state in PostgreSQL via the `psycopg` (v3) driver
+(already in `requirements.txt`). The backend reads `DATABASE_URL`:
+
+- **If `DATABASE_URL` is set** → PostgreSQL.
+- **If unset** → SQLite (`game_state.db`), which is **ephemeral** on Render's
+  free tier and wiped on every restart. Set `DATABASE_URL` for real persistence.
+
+**Use the Supabase connection POOLER URI** — Supabase → Project → **Connect** →
+"Connection string". There are three options; pick correctly:
+
+| Option | Host / Port | Works from Render free tier? |
+|---|---|---|
+| Direct connection | `db.<ref>.supabase.co:5432` | ❌ IPv6-only on the free tier — Render free web services are IPv4-only and cannot reach it |
+| **Transaction pooler** | `...pooler.supabase.com:6543` | ✅ Recommended |
+| Session pooler | `...pooler.supabase.com:5432` | ✅ Also works |
+
+Notes:
+- The app sets `prepare_threshold=None` so it works under the pooler's
+  transaction mode (no "prepared statement already exists" errors).
+- Paste the **raw** password into the URL — the app percent-encodes credentials
+  automatically, so a password containing `@` won't corrupt host parsing. (If
+  the password also contains `/`, `?`, or `#`, resetting it to an alphanumeric
+  one in Supabase is the simplest fix.)
+- The `players` table is **per session** (one row per live connection, created on
+  connect and removed on disconnect); only the shared `locations` map is seeded.
 
 ## Step 2: Deploy Frontend to Vercel
 
@@ -69,15 +100,21 @@ The frontend is in the `client/` folder. Before deploying, you may want to updat
    - **Build Command**: Leave empty or `echo "Static site"`
    - **Output Directory**: `.`
 
-### 2.3 Set Environment Variables
+### 2.3 Point the Frontend at Your Backend
 
-In the Vercel dashboard for your project:
+The client is a **static site** (no build step), so it does not read env vars at
+build time. `client/app.js` chooses the backend URL at runtime:
 
-1. Go to **"Settings"** → **"Environment Variables"**
-2. Add:
-   ```
-   REACT_APP_BACKEND_URL=https://broker-backend.onrender.com
-   ```
+- On a `*.vercel.app` host it uses `window.BROKER_BACKEND_URL` if defined,
+  otherwise the hard-coded default Render URL in `app.js`.
+- On localhost it uses `http://localhost:8080`.
+
+To target your own Render backend, do **one** of:
+
+- **Edit the default** in `client/app.js` (the `https://broker-...onrender.com`
+  fallback), or
+- **Set `window.BROKER_BACKEND_URL`** via a `<script>` tag in
+  `client/index.html` before `app.js` (see [Step 3](#step-3-update-backend-url-in-frontend)).
 
 ### 2.4 Deploy
 
@@ -95,14 +132,9 @@ If your Vercel domain is different from what's in the environment variable:
 
 ## Step 3: Update Backend URL in Frontend
 
-If you're using a custom Render domain, you can pass it to the frontend in two ways:
+If you're using a custom Render domain, point the frontend at it in one of two ways:
 
-### Option A: Via Vercel Environment Variable (Recommended)
-
-1. In Vercel settings, add: `REACT_APP_BACKEND_URL=https://your-render-url.onrender.com`
-2. Redeploy
-
-### Option B: Via Window Variable
+### Option A: Window Variable (Recommended)
 
 Add a `<script>` tag in `client/index.html` before `app.js`:
 
@@ -112,6 +144,11 @@ Add a `<script>` tag in `client/index.html` before `app.js`:
 </script>
 ```
 
+### Option B: Edit the Default
+
+Change the hard-coded fallback URL in `client/app.js` (the
+`https://broker-...onrender.com` value in the `BACKEND_URL` resolver).
+
 ## Step 4: Test the Deployment
 
 1. Open your Vercel URL in a browser
@@ -119,8 +156,9 @@ Add a `<script>` tag in `client/index.html` before `app.js`:
 3. Click "Connect Audio" and test the game flow
 4. Verify:
    - WebSocket connection to backend works
-   - Game state updates work
-   - Audio playback works (if microphone is accessible)
+   - Game state (HUD) updates work
+   - NOVA speaks back (via the browser's built-in speech synthesis)
+   - The Render logs show `✅ Database initialized successfully (PostgreSQL).`
 
 ## Step 5: Custom Domain (Optional)
 
@@ -140,15 +178,15 @@ Add a `<script>` tag in `client/index.html` before `app.js`:
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `ANTHROPIC_API_KEY` | Yes | Claude API key |
-| `DEEPGRAM_API_KEY` | Yes | Deepgram API key |
+| `DEEPGRAM_API_KEY` | Yes | Deepgram API key (STT) |
 | `VERCEL_FRONTEND_URL` | Yes | Vercel frontend domain (for CORS) |
-| `PORT` | No | Server port (default: 8000) |
+| `DATABASE_URL` | Recommended | Supabase **pooler** connection string. Unset → ephemeral SQLite |
+| `PORT` | No | Server port (set automatically by Render) |
 | `RENDER` | No | Set automatically by Render |
 
 ### Frontend (Vercel)
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `REACT_APP_BACKEND_URL` | No | Backend API URL (auto-detected if not set) |
+The static client takes no build-time env vars. Set the backend URL at runtime
+via `window.BROKER_BACKEND_URL` or the default in `client/app.js` (see Step 3).
 
 ## Troubleshooting
 
@@ -161,8 +199,16 @@ Add a `<script>` tag in `client/index.html` before `app.js`:
 - Check Render logs for detailed error messages
 
 ### Game State Not Updating
-- Ensure `/state` endpoint is responding: `curl https://broker-backend.onrender.com/state`
+- Health-check the service: `curl https://broker-backend.onrender.com/`
+  (the `/state` endpoint now requires a `?sid=<session>` and returns 400 without one)
 - Check browser console for fetch errors
+
+### Database Connection Fails
+- `failed to resolve host 'db.<ref>.supabase.co'` → you used the **direct**
+  connection; switch `DATABASE_URL` to the Supabase **pooler** URI (see Step 1.5)
+- Logs show `(SQLite)` instead of `(PostgreSQL)` → `DATABASE_URL` is not set on Render
+- `prepared statement already exists` → ensure you're on the current code
+  (it disables prepared statements for the pooler)
 
 ### Microphone/Audio Issues
 - May be restricted on free Render instances due to resource limits
@@ -183,7 +229,17 @@ python -m http.server 3000 --directory client
 
 ## Database Note
 
-The game uses SQLite (`game_state.db`). On Render's free tier, this file may be reset when the service restarts. For production with persistent data, consider upgrading to a PostgreSQL database.
+The backend supports both PostgreSQL and SQLite, selected automatically by the
+`DATABASE_URL` environment variable (see [Step 1.5](#15-database-supabase-postgresql)):
+
+- **Production** → set `DATABASE_URL` to your Supabase **pooler** connection
+  string for persistent PostgreSQL state.
+- **Local dev / `DATABASE_URL` unset** → SQLite (`game_state.db`). On Render's
+  free tier this file is ephemeral and reset on every restart, so always set
+  `DATABASE_URL` in production.
+
+Game state is per session (one player row per live connection), so concurrent
+players are isolated from one another.
 
 ## Support
 
