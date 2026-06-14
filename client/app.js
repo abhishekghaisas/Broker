@@ -49,11 +49,21 @@ function logMessage(msg) {
 document.addEventListener('DOMContentLoaded', () => {
     // 0. Main Menu Handler
     const startMissionBtn = document.getElementById('startMissionBtn');
+    const callsignInput = document.getElementById('callsignInput');
+
+    // Callsign: letters and single spaces only — no digits or symbols. Strip as
+    // they type so the field can never hold disallowed characters.
+    const cleanCallsign = (v) => v.replace(/[^A-Za-z ]/g, '').replace(/\s+/g, ' ').trimStart().slice(0, 24);
+    if (callsignInput) {
+        callsignInput.addEventListener('input', (e) => {
+            e.target.value = cleanCallsign(e.target.value);
+        });
+    }
+
     if (startMissionBtn) {
         startMissionBtn.addEventListener('click', () => {
-            const input = document.getElementById('callsignInput');
-            const entered = input ? input.value.trim() : '';
-            if (entered) playerName = entered.slice(0, 24);
+            const entered = callsignInput ? cleanCallsign(callsignInput.value).trim() : '';
+            if (entered) playerName = entered;
             const callsignEl = document.getElementById('callsign');
             if (callsignEl) callsignEl.innerText = playerName;
             const mainMenu = document.getElementById('main-menu');

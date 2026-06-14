@@ -22,9 +22,11 @@ async def websocket_endpoint(websocket: WebSocket):
     raw_sid = websocket.query_params.get("sid", "")
     session_id = re.sub(r"[^A-Za-z0-9_-]", "", raw_sid)[:64] or f"sess_{uuid.uuid4().hex}"
 
-    # Callsign arrives as ?name=; sanitize to a short plain-text label.
+    # Callsign arrives as ?name=; enforce letters-and-spaces only (the client
+    # restricts this too, but the query param is untrusted), collapse whitespace,
+    # cap length, and fall back to the generic default.
     raw_name = websocket.query_params.get("name", "")
-    player_name = " ".join(raw_name.split()).strip()[:24] or "Operative"
+    player_name = " ".join(re.sub(r"[^A-Za-z ]", "", raw_name).split())[:24] or "Operative"
     print(f"🟢 Client connected. Session {session_id[:12]}… Callsign: {player_name}")
 
     # --- 2. INITIALIZE QUEUES ---
