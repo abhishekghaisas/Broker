@@ -6,7 +6,7 @@ from db import transaction, init_tables, USE_POSTGRES
 # Initial player baseline, reused for seeding and resets.
 START_HEALTH = 100
 START_CREDITS = 250
-START_LOCATION = "loc_001"
+START_LOCATION = "loc_002"  # The Safehouse — a secure place to begin the operation
 
 
 def init_db():
