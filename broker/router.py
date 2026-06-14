@@ -1,9 +1,11 @@
 import asyncio
 import time
 import json
+import re
+import uuid
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 from db import transaction
-from mcp_server import reset_game
+from mcp_server import create_session, delete_session
 from integrations.stt import StreamingSTT
 from integrations.llm import ConstrainedLLM
 from integrations.classifier import intent_classifier
@@ -13,27 +15,30 @@ router = APIRouter()
 @router.websocket("/stream")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    print("🟢 Client connected to edge router.")
 
-    # --- 1. INITIALIZE QUEUES ---
+    # --- 1. SESSION IDENTITY ---
+    # The client generates a per-tab session id (?sid=) so concurrent players get
+    # isolated game state. Sanitize to a safe key; fall back to a server id.
+    raw_sid = websocket.query_params.get("sid", "")
+    session_id = re.sub(r"[^A-Za-z0-9_-]", "", raw_sid)[:64] or f"sess_{uuid.uuid4().hex}"
+
+    # Callsign arrives as ?name=; sanitize to a short plain-text label.
+    raw_name = websocket.query_params.get("name", "")
+    player_name = " ".join(raw_name.split()).strip()[:24] or "Operative"
+    print(f"🟢 Client connected. Session {session_id[:12]}… Callsign: {player_name}")
+
+    # --- 2. INITIALIZE QUEUES ---
     audio_queue = asyncio.Queue()
     token_queue = asyncio.Queue()
     ui_queue = asyncio.Queue()
 
-    # --- 2. INITIALIZE ENGINES ---
+    # --- 3. INITIALIZE ENGINES (bound to this session) ---
     stt_engine = StreamingSTT()
-    llm_engine = ConstrainedLLM()
+    llm_engine = ConstrainedLLM(player_id=session_id)
     await stt_engine.connect()
 
-    # The player picks a callsign on the menu; it arrives as a ?name= query param.
-    # Sanitize to a short plain-text label, falling back to the generic default.
-    raw_name = websocket.query_params.get("name", "")
-    player_name = " ".join(raw_name.split()).strip()[:24] or "Operative"
-
-    # Start every session from a clean slate so a new operative never inherits
-    # the previous run's health, credits, inventory, or compromised locations.
-    await asyncio.to_thread(reset_game, "player_1", player_name)
-    print(f"♻️ Game state reset for new session. Callsign: {player_name}")
+    # Create a fresh, isolated game row for this session.
+    await asyncio.to_thread(create_session, session_id, player_name)
 
     # --- 3. DEFINE BACKGROUND TASKS ---
     async def ui_push_task():
@@ -177,23 +182,32 @@ async def websocket_endpoint(websocket: WebSocket):
         ui_task.cancel()
         llm_task.cancel()
         telemetry_task.cancel()
+        # Drop this session's isolated game row so the table doesn't accumulate.
+        try:
+            await asyncio.to_thread(delete_session, session_id)
+            print(f"🧹 Session {session_id[:12]}… cleaned up.")
+        except Exception as e:
+            print(f"⚠️ Session cleanup error: {e}")
 
 
 # --- REST API ROUTES ---
 @router.get("/state")
-async def get_game_state():
+async def get_game_state(sid: str = ""):
+    # HUD poller passes its session id; without one there's no game to report.
+    if not sid:
+        raise HTTPException(status_code=400, detail="Missing session id")
     try:
         with transaction() as cursor:
             cursor.execute("""
                 SELECT p.health, p.credits, l.name, p.active_puzzle, p.name
                 FROM players AS p
                 JOIN locations AS l ON p.current_location_id = l.id
-                WHERE p.id = 'player_1'
-            """)
+                WHERE p.id = ?
+            """, (sid,))
             row = cursor.fetchone()
 
         if not row:
-            raise HTTPException(status_code=404, detail="Player not found")
+            raise HTTPException(status_code=404, detail="Session not found")
 
         return {
             "health": row[0],
@@ -202,6 +216,8 @@ async def get_game_state():
             "puzzle": row[3],
             "callsign": row[4],
         }
+    except HTTPException:
+        raise  # Don't let the generic handler mask 400/404 as a 500.
     except Exception as e:
         print(f"Backend Crash: {e}")
         raise HTTPException(status_code=500, detail=str(e))

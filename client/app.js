@@ -22,6 +22,12 @@ let mediaStream;
 let processor;
 let playerName = "Operative";  // Set from the callsign input on the main menu.
 
+// Unique per browser tab so concurrent players get isolated game state on the
+// backend. Sent on the WebSocket connect and every HUD /state poll.
+const SESSION_ID = (window.crypto && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : 'sess_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+
 const SAMPLE_RATE = 16000;
 // Instantiate your VAD from vad.js
 const vad = new VoiceActivityDetector(0.015);
@@ -153,7 +159,7 @@ function connectWebSocket() {
         return;
     }
     
-    ws = new WebSocket(`${WS_URL}/stream?name=${encodeURIComponent(playerName)}`);
+    ws = new WebSocket(`${WS_URL}/stream?sid=${encodeURIComponent(SESSION_ID)}&name=${encodeURIComponent(playerName)}`);
     
     ws.onopen = () => {
         console.log('🟢 [Network] Connected to Event Broker.');
@@ -353,7 +359,7 @@ if(disconnectBtn) {
 
 async function updateHUD() {
     try {
-        const response = await fetch(`${BACKEND_URL}/state`);
+        const response = await fetch(`${BACKEND_URL}/state?sid=${encodeURIComponent(SESSION_ID)}`);
         if (!response.ok) {
             const errorData = await response.json();
             throw new Error(errorData.detail || 'Server error');

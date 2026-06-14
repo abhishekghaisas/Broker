@@ -15,7 +15,10 @@ from mcp_server import (
 )
 
 class ConstrainedLLM:
-    def __init__(self):
+    def __init__(self, player_id: str = "player_1"):
+        # Each WebSocket connection gets its own ConstrainedLLM bound to a unique
+        # session id, so concurrent players never share game state.
+        self.player_id = player_id
         self.client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
         self.chat_history = []
         
@@ -134,8 +137,8 @@ USE VARIATIONS OF THE ABOVE EXAMPLES TO CREATE UNIQUE RESPONSES FOR EACH SCENARI
                         SELECT p.name, p.health, p.credits, l.name
                         FROM players p
                         JOIN locations l ON p.current_location_id = l.id
-                        WHERE p.id = 'player_1'
-                    ''')
+                        WHERE p.id = ?
+                    ''', (self.player_id,))
                     return cursor.fetchone()
 
             state_tuple = await asyncio.to_thread(_read_db)
@@ -206,25 +209,26 @@ USE VARIATIONS OF THE ABOVE EXAMPLES TO CREATE UNIQUE RESPONSES FOR EACH SCENARI
             await ui_queue.put({"type": "terminal", "content": match.strip()})
 
     def _run_tool(self, name, tool_input):
-        """Applies a single tool call's effects to the game-state DB."""
+        """Applies a single tool call's effects to this session's game state."""
         out = "Executed"
+        pid = self.player_id
         # Server-authoritative vendor catalogue (price in credits).
         CATALOG = {"syndicate decryption key": ("Syndicate Decryption Key", 400)}
 
         # Read-only / self-contained tools that manage their own transaction.
         if name == "get_player_state":
-            return get_player_state("player_1")
+            return get_player_state(pid)
         if name == "apply_ambient_hazards":
-            result = apply_ambient_hazards("player_1")
+            result = apply_ambient_hazards(pid)
             dmg = result.get("damage_taken", 0)
             loc = result.get("location", "current sector")
             if dmg > 0:
                 return f"Ambient hazard: Operative took {dmg} damage in {loc}."
             return f"No ambient hazard this cycle in {loc}."
         if name == "end_game":
-            return end_game("player_1")
+            return end_game(pid)
         if name == "reset_game_state":
-            return reset_game("player_1")
+            return reset_game(pid)
 
         try:
             with transaction() as c:
@@ -237,7 +241,7 @@ USE VARIATIONS OF THE ABOVE EXAMPLES TO CREATE UNIQUE RESPONSES FOR EACH SCENARI
                         out = f"Error: '{requested}' is not available for purchase here."
                     else:
                         item_name, price = entry
-                        c.execute("SELECT credits, inventory FROM players WHERE id = 'player_1'")
+                        c.execute("SELECT credits, inventory FROM players WHERE id = ?", (pid,))
                         credits, inv_json = c.fetchone()
                         if credits < price:
                             out = (f"Transaction DECLINED: insufficient funds. The {item_name} costs "
@@ -248,40 +252,40 @@ USE VARIATIONS OF THE ABOVE EXAMPLES TO CREATE UNIQUE RESPONSES FOR EACH SCENARI
                             if item_name not in inventory:
                                 inventory.append(item_name)
                             new_balance = credits - price
-                            c.execute("UPDATE players SET credits = ?, inventory = ? WHERE id = 'player_1'",
-                                      (new_balance, json.dumps(inventory)))
+                            c.execute("UPDATE players SET credits = ?, inventory = ? WHERE id = ?",
+                                      (new_balance, json.dumps(inventory), pid))
                             out = (f"Purchase COMPLETE. Acquired '{item_name}'. {price} credits deducted. "
                                    f"New balance: {new_balance}.")
 
                 # Signed credit adjustment (rewards/penalties). delta may be negative.
                 elif name == "adjust_credits":
                     val = tool_input.get("delta", tool_input.get("amount", 0))
-                    c.execute("SELECT credits FROM players WHERE id = 'player_1'")
+                    c.execute("SELECT credits FROM players WHERE id = ?", (pid,))
                     current_credits = c.fetchone()[0]
                     new_balance = max(0, current_credits + val)
-                    c.execute("UPDATE players SET credits = ? WHERE id = 'player_1'", (new_balance,))
+                    c.execute("UPDATE players SET credits = ? WHERE id = ?", (new_balance, pid))
                     out = f"Credits adjusted successfully. New balance: {new_balance}"
 
                 # Transfer credits OUT of the ledger (a debit), with a funds check.
                 elif name == "transfer_credits":
                     amount = abs(tool_input.get("amount", tool_input.get("delta", 0)))
-                    c.execute("SELECT credits FROM players WHERE id = 'player_1'")
+                    c.execute("SELECT credits FROM players WHERE id = ?", (pid,))
                     credits = c.fetchone()[0]
                     if credits < amount:
                         out = f"Transfer DECLINED: insufficient funds. Balance {credits}, requested {amount}."
                     else:
-                        c.execute("UPDATE players SET credits = credits - ? WHERE id = 'player_1'", (amount,))
+                        c.execute("UPDATE players SET credits = credits - ? WHERE id = ?", (amount, pid))
                         out = f"Transferred {amount} credits. New balance: {credits - amount}."
 
                 # Process Health
                 elif name == "adjust_health":
                     val = tool_input.get("delta", 0)
                     print(f"❤️ [Adjust Health] Delta: {val}")
-                    c.execute("SELECT health FROM players WHERE id = 'player_1'")
+                    c.execute("SELECT health FROM players WHERE id = ?", (pid,))
                     current_health = c.fetchone()[0]
                     new_health = max(0, min(100, current_health + val))
                     print(f"❤️ [Adjust Health] {current_health} + {val} = {new_health}")
-                    c.execute("UPDATE players SET health = ? WHERE id = 'player_1'", (new_health,))
+                    c.execute("UPDATE players SET health = ? WHERE id = ?", (new_health, pid))
                     if new_health == 0:
                         out = "CRITICAL: Player health has reached 0. Operative is deceased."
                     else:
@@ -303,37 +307,37 @@ USE VARIATIONS OF THE ABOVE EXAMPLES TO CREATE UNIQUE RESPONSES FOR EACH SCENARI
                         print(f"🗺️ [Move Location] Found: {loc_name} ({loc_id})")
                         # Gate: require Decryption Key to access The Extraction Rooftop
                         if loc_id == "loc_005":
-                            c.execute("SELECT inventory FROM players WHERE id = 'player_1'")
+                            c.execute("SELECT inventory FROM players WHERE id = ?", (pid,))
                             inv_json = c.fetchone()[0]
                             inventory = json.loads(inv_json or "[]")
                             if "Syndicate Decryption Key" not in inventory:
                                 out = "Access DENIED: The Extraction Rooftop is secured. A Syndicate Decryption Key is required to proceed."
                             else:
-                                c.execute("UPDATE players SET current_location_id = ? WHERE id = 'player_1'", (loc_id,))
+                                c.execute("UPDATE players SET current_location_id = ? WHERE id = ?", (loc_id, pid))
                                 print(f"✅ [Move Location] Updated to {loc_name}")
                                 out = f"Location updated to: {loc_name}"
                         else:
                             # Reset NPC aggravation for Neon District when leaving
-                            c.execute("SELECT l.name FROM players p JOIN locations l ON p.current_location_id = l.id WHERE p.id = 'player_1'")
+                            c.execute("SELECT l.name FROM players p JOIN locations l ON p.current_location_id = l.id WHERE p.id = ?", (pid,))
                             current_loc = c.fetchone()
                             if current_loc and current_loc[0] == "Neon District":
-                                c.execute("UPDATE players SET npc_encounters = '{}' WHERE id = 'player_1'")
+                                c.execute("UPDATE players SET npc_encounters = '{}' WHERE id = ?", (pid,))
                                 print(f"🗺️ [Move Location] Reset NPC encounters for Neon District")
 
-                            c.execute("UPDATE players SET current_location_id = ? WHERE id = 'player_1'", (loc_id,))
+                            c.execute("UPDATE players SET current_location_id = ? WHERE id = ?", (loc_id, pid))
                             print(f"✅ [Move Location] Updated to {loc_name}")
                             out = f"Location updated to: {loc_name}"
 
                 # Track NPC failed negotiation and apply consequences
                 elif name == "npc_failed_negotiation":
                     npc_name = tool_input.get("npc_name", "Unknown NPC")
-                    result = track_npc_aggravation("player_1", npc_name, is_failed=True)
+                    result = track_npc_aggravation(pid, npc_name, is_failed=True)
                     if result.get("damage", 0) > 0:
                         damage = random.randint(result["damage"] - 5, result["damage"] + 5)
-                        c.execute("SELECT health FROM players WHERE id = 'player_1'")
+                        c.execute("SELECT health FROM players WHERE id = ?", (pid,))
                         current_health = c.fetchone()[0]
                         new_health = max(0, current_health - damage)
-                        c.execute("UPDATE players SET health = ? WHERE id = 'player_1'", (new_health,))
+                        c.execute("UPDATE players SET health = ? WHERE id = ?", (new_health, pid))
                         out = f"{result['message']} {npc_name} dealt {damage} damage."
                     else:
                         out = result['message']
@@ -341,13 +345,13 @@ USE VARIATIONS OF THE ABOVE EXAMPLES TO CREATE UNIQUE RESPONSES FOR EACH SCENARI
                 # Mark location as compromised after successful terminal hack
                 elif name == "mark_location_compromised":
                     location_name = tool_input.get("location_name", "")
-                    c.execute("SELECT compromised_locations FROM players WHERE id = 'player_1'")
+                    c.execute("SELECT compromised_locations FROM players WHERE id = ?", (pid,))
                     row = c.fetchone()
                     compromised = json.loads(row[0] or "[]") if row else []
                     if location_name not in compromised:
                         compromised.append(location_name)
-                    c.execute("UPDATE players SET compromised_locations = ? WHERE id = 'player_1'",
-                              (json.dumps(compromised),))
+                    c.execute("UPDATE players SET compromised_locations = ? WHERE id = ?",
+                              (json.dumps(compromised), pid))
                     out = f"Location '{location_name}' is now flagged as compromised. Future visits will be more dangerous."
 
                 # Server-verified win condition: evacuate from the Extraction Rooftop
@@ -356,8 +360,8 @@ USE VARIATIONS OF THE ABOVE EXAMPLES TO CREATE UNIQUE RESPONSES FOR EACH SCENARI
                     c.execute('''
                         SELECT p.health, p.credits, p.inventory, l.id, l.name
                         FROM players p JOIN locations l ON p.current_location_id = l.id
-                        WHERE p.id = 'player_1'
-                    ''')
+                        WHERE p.id = ?
+                    ''', (pid,))
                     row = c.fetchone()
                     if not row:
                         out = "Error: Player not found."
@@ -370,7 +374,7 @@ USE VARIATIONS OF THE ABOVE EXAMPLES TO CREATE UNIQUE RESPONSES FOR EACH SCENARI
                         elif not has_key:
                             out = "EXTRACTION FAILED: The shuttle cannot land without a Syndicate Decryption Key. Acquire it first."
                         else:
-                            c.execute("UPDATE players SET status = 'Extracted' WHERE id = 'player_1'")
+                            c.execute("UPDATE players SET status = 'Extracted' WHERE id = ?", (pid,))
                             inv_str = ", ".join(inventory) if inventory else "None"
                             out = (f"EXTRACTION SUCCESSFUL. Operative evacuated from {loc_name}.\n"
                                    f"Final Health: {health}%\nFinal Credits: {credits}\nInventory: {inv_str}")
@@ -387,7 +391,7 @@ USE VARIATIONS OF THE ABOVE EXAMPLES TO CREATE UNIQUE RESPONSES FOR EACH SCENARI
         """Check if the player is in a losing state."""
         try:
             with transaction() as c:
-                c.execute("SELECT credits, health FROM players WHERE id = 'player_1'")
+                c.execute("SELECT credits, health FROM players WHERE id = ?", (self.player_id,))
                 row = c.fetchone()
 
             if not row:

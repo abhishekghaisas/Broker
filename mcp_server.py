@@ -10,16 +10,17 @@ START_LOCATION = "loc_001"
 
 
 def init_db():
-    """Initializes the database with game lore and seeds initial state (SQLite or PostgreSQL)."""
+    """Initializes the shared map (SQLite or PostgreSQL).
+
+    Player rows are now per-session (one per WebSocket connection), created on
+    connect and removed on disconnect — so we only seed the static `locations`
+    table here and clear any player rows left over from a previous run."""
     init_tables()
 
     with transaction() as cursor:
-        # Seed data only if empty.
-        cursor.execute("SELECT COUNT(*) FROM players")
-        count = cursor.fetchone()[0]
-
-        if count == 0:
-            print("Seeding initial game state data...")
+        cursor.execute("SELECT COUNT(*) FROM locations")
+        if cursor.fetchone()[0] == 0:
+            print("Seeding map locations...")
             cursor.executemany('''
                 INSERT INTO locations (id, name, is_safe_zone, description, syndicate_presence)
                 VALUES (?, ?, ?, ?, ?)
@@ -31,23 +32,38 @@ def init_db():
                 ('loc_005', 'The Extraction Rooftop', True, 'A hidden rooftop with a helicopter pad. The only way off the map.', False)
             ])
 
-            # Player starts with 250 credits to balance the 400 credit goal.
-            cursor.execute('''
-                INSERT INTO players (id, name, health, status, credits, current_location_id, inventory, active_puzzle, npc_encounters, compromised_locations)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', ('player_1', 'Operative', START_HEALTH, 'Active', START_CREDITS, START_LOCATION, '[]', None, '{}', '[]'))
+        # Sessions don't survive a restart; drop stale player rows so the table
+        # doesn't accumulate orphans across deploys.
+        cursor.execute("DELETE FROM players")
 
     db_type = 'PostgreSQL' if USE_POSTGRES else 'SQLite'
     print(f"✅ Database initialized successfully ({db_type}).")
 
 
-def reset_game(player_id: str = "player_1", name: str = None) -> str:
-    """Resets the Operative to the initial state, clearing inventory, encounters,
-    compromised locations, and any 'Extracted' status. Called on a fresh session
-    and by the reset_game_state tool.
+def create_session(session_id: str, name: str = "Operative") -> str:
+    """Create a fresh player row for a new game session (one per connection).
+    Replaces any existing row with the same id (e.g. a reconnect)."""
+    with transaction() as cursor:
+        cursor.execute("DELETE FROM players WHERE id = ?", (session_id,))
+        cursor.execute('''
+            INSERT INTO players (id, name, health, status, credits, current_location_id,
+                                 inventory, active_puzzle, npc_encounters, compromised_locations)
+            VALUES (?, ?, ?, ?, ?, ?, '[]', NULL, '{}', '[]')
+        ''', (session_id, name, START_HEALTH, 'Active', START_CREDITS, START_LOCATION))
+    return session_id
 
-    If `name` is given (a fresh session with a chosen callsign) it is applied;
-    if omitted (e.g. NOVA's in-game reset) the existing callsign is preserved."""
+
+def delete_session(session_id: str) -> None:
+    """Remove a session's player row when its connection closes."""
+    with transaction() as cursor:
+        cursor.execute("DELETE FROM players WHERE id = ?", (session_id,))
+
+
+def reset_game(player_id: str, name: str = None) -> str:
+    """Resets the session's Operative to the initial state, clearing inventory,
+    encounters, compromised locations, and any 'Extracted' status. Used by NOVA's
+    in-game reset_game_state tool. The existing callsign is preserved when `name`
+    is omitted; passing a name overrides it."""
     with transaction() as cursor:
         if name is None:
             cursor.execute('''
