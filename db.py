@@ -73,7 +73,11 @@ class _Cursor:
 def get_connection():
     """Get a database connection (PostgreSQL or SQLite)."""
     if USE_POSTGRES:
-        return _pg.connect(DB_URL)
+        # prepare_threshold=None disables server-side prepared statements, which
+        # otherwise break under Supabase's transaction-mode pooler (Supavisor /
+        # PgBouncer reuses backends across connections -> "prepared statement
+        # already exists"). We open a fresh connection per transaction anyway.
+        return _pg.connect(DB_URL, prepare_threshold=None)
     conn = sqlite3.connect(SQLITE_FILE)
     # Wait briefly instead of failing instantly if another connection holds a lock.
     conn.execute("PRAGMA busy_timeout = 5000")

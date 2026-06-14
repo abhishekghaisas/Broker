@@ -1,7 +1,3 @@
-databases:
-  - name: broker-db
-    plan: free
-
 services:
   - type: web
     name: broker-backend
@@ -17,9 +13,9 @@ services:
         sync: false
       - key: VERCEL_FRONTEND_URL
         sync: false
-      # Wires the managed Postgres connection string into the app. When present,
-      # db.py uses PostgreSQL; if unset (e.g. local dev), it falls back to SQLite.
+      # Supabase Postgres connection string, set manually in the Render dashboard.
+      # When present, db.py uses PostgreSQL; if unset (e.g. local dev) it falls
+      # back to SQLite. Use the Supabase connection POOLER URI (Supavisor, port
+      # 6543) so it works over IPv4 from Render.
       - key: DATABASE_URL
-        fromDatabase:
-          name: broker-db
-          property: connectionString
+        sync: false
