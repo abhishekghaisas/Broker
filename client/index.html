@@ -15,6 +15,7 @@
         </div>
         
         <div id="game-state">
+            <p>Callsign: <span id="callsign">--</span></p>
             <p>Location: <span id="loc">Awaiting Link...</span></p>
             <p>Health: <span id="health">--</span></p>
             <p>Credits: <span id="credits">--</span></p>
@@ -43,7 +44,9 @@
                 <p style="margin: 0;"><strong>STATUS:</strong> Monitor health, location, and credits in the HUD.</p>
             </div>
 
-            <button id="startMissionBtn" style="margin-top: 24px; padding: 12px 32px; background: #ff0055; color: white; border: none; font-weight: bold; cursor: pointer; font-size: 1em; border-radius: 4px;">INITIATE OPERATION</button>
+            <input type="text" id="callsignInput" maxlength="24" placeholder="ENTER YOUR CALLSIGN" style="margin-top: 20px; padding: 12px; width: 100%; box-sizing: border-box; background: #000; color: #0f0; border: 1px solid #ff0055; font-family: 'Courier New', monospace; text-align: center; letter-spacing: 1px;">
+
+            <button id="startMissionBtn" style="margin-top: 16px; padding: 12px 32px; background: #ff0055; color: white; border: none; font-weight: bold; cursor: pointer; font-size: 1em; border-radius: 4px;">INITIATE OPERATION</button>
         </div>
     </div>
 

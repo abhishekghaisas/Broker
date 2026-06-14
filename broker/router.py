@@ -25,10 +25,15 @@ async def websocket_endpoint(websocket: WebSocket):
     llm_engine = ConstrainedLLM()
     await stt_engine.connect()
 
+    # The player picks a callsign on the menu; it arrives as a ?name= query param.
+    # Sanitize to a short plain-text label, falling back to the generic default.
+    raw_name = websocket.query_params.get("name", "")
+    player_name = " ".join(raw_name.split()).strip()[:24] or "Operative"
+
     # Start every session from a clean slate so a new operative never inherits
     # the previous run's health, credits, inventory, or compromised locations.
-    await asyncio.to_thread(reset_game, "player_1")
-    print("♻️ Game state reset for new session.")
+    await asyncio.to_thread(reset_game, "player_1", player_name)
+    print(f"♻️ Game state reset for new session. Callsign: {player_name}")
 
     # --- 3. DEFINE BACKGROUND TASKS ---
     async def ui_push_task():
@@ -179,9 +184,8 @@ async def websocket_endpoint(websocket: WebSocket):
 async def get_game_state():
     try:
         with transaction() as cursor:
-            # Querying the exact 4 data columns including the active_puzzle
             cursor.execute("""
-                SELECT p.health, p.credits, l.name, p.active_puzzle
+                SELECT p.health, p.credits, l.name, p.active_puzzle, p.name
                 FROM players AS p
                 JOIN locations AS l ON p.current_location_id = l.id
                 WHERE p.id = 'player_1'
@@ -190,12 +194,13 @@ async def get_game_state():
 
         if not row:
             raise HTTPException(status_code=404, detail="Player not found")
-            
+
         return {
             "health": row[0],
             "credits": row[1],
             "location": row[2],
-            "puzzle": row[3] # Index 3 now maps correctly to the DB pull
+            "puzzle": row[3],
+            "callsign": row[4],
         }
     except Exception as e:
         print(f"Backend Crash: {e}")

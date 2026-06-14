@@ -131,7 +131,7 @@ USE VARIATIONS OF THE ABOVE EXAMPLES TO CREATE UNIQUE RESPONSES FOR EACH SCENARI
             def _read_db():
                 with transaction() as cursor:
                     cursor.execute('''
-                        SELECT p.health, p.credits, l.name
+                        SELECT p.name, p.health, p.credits, l.name
                         FROM players p
                         JOIN locations l ON p.current_location_id = l.id
                         WHERE p.id = 'player_1'
@@ -140,7 +140,8 @@ USE VARIATIONS OF THE ABOVE EXAMPLES TO CREATE UNIQUE RESPONSES FOR EACH SCENARI
 
             state_tuple = await asyncio.to_thread(_read_db)
             if not state_tuple: return "Status: Unknown"
-            return f"Status: Health {state_tuple[0]}, Credits {state_tuple[1]}, Location {state_tuple[2]}"
+            return (f"Operative Callsign: {state_tuple[0]} | Status: Health {state_tuple[1]}, "
+                    f"Credits {state_tuple[2]}, Location {state_tuple[3]}")
         except Exception as e:
             print(f"⚠️ [Telemetry Error]: {e}")
             return "Status: Telemetry Offline"
@@ -434,7 +435,10 @@ USE VARIATIONS OF THE ABOVE EXAMPLES TO CREATE UNIQUE RESPONSES FOR EACH SCENARI
                 # Refresh live telemetry before each turn so post-tool narration
                 # reflects the updated game state.
                 live_state = await self.get_live_context()
-                dynamic_prompt = f"{self.system_prompt}\n\n[LIVE TELEMETRY]: {live_state}"
+                dynamic_prompt = (
+                    f"{self.system_prompt}\n\n[LIVE TELEMETRY]: {live_state}\n"
+                    f"Address the Operative by the callsign shown in telemetry rather than the generic 'Operative'."
+                )
 
                 # Direct Claude API with prompt caching
                 api_start = asyncio.get_event_loop().time()

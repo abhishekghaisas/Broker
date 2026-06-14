@@ -41,18 +41,30 @@ def init_db():
     print(f"✅ Database initialized successfully ({db_type}).")
 
 
-def reset_game(player_id: str = "player_1") -> str:
+def reset_game(player_id: str = "player_1", name: str = None) -> str:
     """Resets the Operative to the initial state, clearing inventory, encounters,
     compromised locations, and any 'Extracted' status. Called on a fresh session
-    and by the reset_game_state tool."""
+    and by the reset_game_state tool.
+
+    If `name` is given (a fresh session with a chosen callsign) it is applied;
+    if omitted (e.g. NOVA's in-game reset) the existing callsign is preserved."""
     with transaction() as cursor:
-        cursor.execute('''
-            UPDATE players
-            SET health = ?, credits = ?, current_location_id = ?, inventory = '[]',
-                status = 'Active', active_puzzle = NULL, npc_encounters = '{}',
-                compromised_locations = '[]'
-            WHERE id = ?
-        ''', (START_HEALTH, START_CREDITS, START_LOCATION, player_id))
+        if name is None:
+            cursor.execute('''
+                UPDATE players
+                SET health = ?, credits = ?, current_location_id = ?, inventory = '[]',
+                    status = 'Active', active_puzzle = NULL, npc_encounters = '{}',
+                    compromised_locations = '[]'
+                WHERE id = ?
+            ''', (START_HEALTH, START_CREDITS, START_LOCATION, player_id))
+        else:
+            cursor.execute('''
+                UPDATE players
+                SET name = ?, health = ?, credits = ?, current_location_id = ?, inventory = '[]',
+                    status = 'Active', active_puzzle = NULL, npc_encounters = '{}',
+                    compromised_locations = '[]'
+                WHERE id = ?
+            ''', (name, START_HEALTH, START_CREDITS, START_LOCATION, player_id))
     return "Game state has been reset to initial conditions."
 
 

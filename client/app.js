@@ -20,6 +20,7 @@ let ws = null;
 let audioContext;
 let mediaStream;
 let processor;
+let playerName = "Operative";  // Set from the callsign input on the main menu.
 
 const SAMPLE_RATE = 16000;
 // Instantiate your VAD from vad.js
@@ -44,6 +45,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const startMissionBtn = document.getElementById('startMissionBtn');
     if (startMissionBtn) {
         startMissionBtn.addEventListener('click', () => {
+            const input = document.getElementById('callsignInput');
+            const entered = input ? input.value.trim() : '';
+            if (entered) playerName = entered.slice(0, 24);
+            const callsignEl = document.getElementById('callsign');
+            if (callsignEl) callsignEl.innerText = playerName;
             const mainMenu = document.getElementById('main-menu');
             if (mainMenu) mainMenu.style.display = 'none';
         });
@@ -147,7 +153,7 @@ function connectWebSocket() {
         return;
     }
     
-    ws = new WebSocket(`${WS_URL}/stream`); 
+    ws = new WebSocket(`${WS_URL}/stream?name=${encodeURIComponent(playerName)}`);
     
     ws.onopen = () => {
         console.log('🟢 [Network] Connected to Event Broker.');
@@ -357,7 +363,9 @@ async function updateHUD() {
         const locEl = document.getElementById('loc');
         const healthEl = document.getElementById('health');
         const credEl = document.getElementById('credits');
-        
+        const callsignEl = document.getElementById('callsign');
+
+        if(callsignEl && state.callsign) callsignEl.innerText = state.callsign;
         if(locEl) locEl.innerText = state.location;
         if(healthEl) healthEl.innerText = state.health + "%";
         if(credEl) credEl.innerText = state.credits;
