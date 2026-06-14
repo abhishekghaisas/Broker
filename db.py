@@ -14,8 +14,32 @@ import os
 import re
 import sqlite3
 from contextlib import contextmanager
+from urllib.parse import urlsplit, urlunsplit, quote
 
 SQLITE_FILE = "game_state.db"
+
+
+def _encode_userinfo(url):
+    """Percent-encode the user:password in a Postgres URL so unescaped special
+    characters in the RAW password (notably '@') don't corrupt host parsing.
+
+    A password containing '@' otherwise makes the URI parser split at the wrong
+    place, gluing part of the password onto the hostname (e.g. host becomes
+    '10@aws-...pooler.supabase.com'). We split on the LAST '@' to recover the
+    real host, then re-encode the credentials. No-op for plain passwords.
+    DATABASE_URL is expected to carry the raw password; we do the escaping.
+    """
+    parts = urlsplit(url)
+    if "@" not in parts.netloc:
+        return url
+    userinfo, hostport = parts.netloc.rsplit("@", 1)
+    if ":" in userinfo:
+        user, password = userinfo.split(":", 1)
+        userinfo = quote(user, safe="") + ":" + quote(password, safe="")
+    else:
+        userinfo = quote(userinfo, safe="")
+    return urlunsplit((parts.scheme, userinfo + "@" + hostport, parts.path, parts.query, parts.fragment))
+
 
 DB_URL = os.getenv("DATABASE_URL")
 USE_POSTGRES = False
@@ -28,6 +52,8 @@ if DB_URL:
         # libpq accepts both schemes, but normalize the legacy form defensively.
         if DB_URL.startswith("postgres://"):
             DB_URL = "postgresql://" + DB_URL[len("postgres://"):]
+        # Escape credentials so a special character in the password can't break parsing.
+        DB_URL = _encode_userinfo(DB_URL)
     except ImportError:
         print("⚠️ psycopg (v3) not installed, falling back to SQLite")
         USE_POSTGRES = False
