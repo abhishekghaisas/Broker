@@ -1,8 +1,9 @@
 import asyncio
 import time
 import json
-import sqlite3
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
+from db import transaction
+from mcp_server import reset_game
 from integrations.stt import StreamingSTT
 from integrations.llm import ConstrainedLLM
 from integrations.classifier import intent_classifier
@@ -23,6 +24,11 @@ async def websocket_endpoint(websocket: WebSocket):
     stt_engine = StreamingSTT()
     llm_engine = ConstrainedLLM()
     await stt_engine.connect()
+
+    # Start every session from a clean slate so a new operative never inherits
+    # the previous run's health, credits, inventory, or compromised locations.
+    await asyncio.to_thread(reset_game, "player_1")
+    print("♻️ Game state reset for new session.")
 
     # --- 3. DEFINE BACKGROUND TASKS ---
     async def ui_push_task():
@@ -172,19 +178,16 @@ async def websocket_endpoint(websocket: WebSocket):
 @router.get("/state")
 async def get_game_state():
     try:
-        conn = sqlite3.connect("game_state.db")
-        cursor = conn.cursor()
-        # Querying the exact 4 data columns including the active_puzzle
-        query = """
-            SELECT p.health, p.credits, l.name, p.active_puzzle 
-            FROM players AS p
-            JOIN locations AS l ON p.current_location_id = l.id
-            WHERE p.id = 'player_1'
-        """
-        cursor.execute(query)
-        row = cursor.fetchone()
-        conn.close()
-        
+        with transaction() as cursor:
+            # Querying the exact 4 data columns including the active_puzzle
+            cursor.execute("""
+                SELECT p.health, p.credits, l.name, p.active_puzzle
+                FROM players AS p
+                JOIN locations AS l ON p.current_location_id = l.id
+                WHERE p.id = 'player_1'
+            """)
+            row = cursor.fetchone()
+
         if not row:
             raise HTTPException(status_code=404, detail="Player not found")
             

@@ -21,10 +21,6 @@ let audioContext;
 let mediaStream;
 let processor;
 
-// Initialize the playback audio context
-const playbackCtx = new (window.AudioContext || window.webkitAudioContext)();
-let nextStartTime = 0; 
-
 const SAMPLE_RATE = 16000;
 // Instantiate your VAD from vad.js
 const vad = new VoiceActivityDetector(0.015);
@@ -237,28 +233,11 @@ function connectWebSocket() {
             } catch (err) {
                 console.error("⚠️ [UI Parser Error]:", err);
             }
-            return; 
+            return;
         }
 
-        // 2. AUDIO PLANE: Handle binary audio blobs natively
-        try {
-            const arrayBuffer = await event.data.arrayBuffer();
-            const audioBuffer = await playbackCtx.decodeAudioData(arrayBuffer);
-            
-            const source = playbackCtx.createBufferSource();
-            source.buffer = audioBuffer;
-            source.connect(playbackCtx.destination);
-            
-            // Overlapping prevention
-            if (nextStartTime < playbackCtx.currentTime) {
-                nextStartTime = playbackCtx.currentTime;
-            }
-            source.start(nextStartTime);
-            nextStartTime += audioBuffer.duration;
-            
-        } catch (err) {
-            console.error("⚠️ [Audio Playback Error]:", err);
-        }
+        // NOVA speaks via the browser's Web Speech API ("speak" messages above),
+        // so the backend never streams binary audio frames to the client.
     };
 
     ws.onclose = () => {
@@ -349,9 +328,6 @@ function stopMicrophone() {
 // ---------------------------------------------------------
 if(connectBtn) {
     connectBtn.onclick = () => {
-        if (playbackCtx.state === 'suspended') {
-            playbackCtx.resume();
-        }
         startMicrophone();
     };
 }

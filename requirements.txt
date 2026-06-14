@@ -35,3 +35,7 @@ uvicorn==0.48.0
 websockets==16.0
 wsproto==1.3.2
 gunicorn==23.0.0
+# PostgreSQL driver (production). psycopg 3 ships prebuilt binary wheels, so it
+# installs cleanly on modern Python (incl. 3.14) without a libpq build step.
+# Only used when DATABASE_URL is set; local dev falls back to SQLite.
+psycopg[binary]>=3.2,<4

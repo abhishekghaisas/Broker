@@ -1,3 +1,7 @@
+databases:
+  - name: broker-db
+    plan: free
+
 services:
   - type: web
     name: broker-backend
@@ -13,3 +17,9 @@ services:
         sync: false
       - key: VERCEL_FRONTEND_URL
         sync: false
+      # Wires the managed Postgres connection string into the app. When present,
+      # db.py uses PostgreSQL; if unset (e.g. local dev), it falls back to SQLite.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: broker-db
+          property: connectionString

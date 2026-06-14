@@ -1,89 +1,113 @@
-"""Database abstraction layer - supports PostgreSQL (production) and SQLite (development)."""
+"""Database abstraction layer - supports PostgreSQL (production) and SQLite (development).
+
+Backend selection is driven entirely by the DATABASE_URL environment variable:
+  * DATABASE_URL set  + psycopg importable -> PostgreSQL  (production)
+  * otherwise                               -> SQLite       (local development)
+
+All game code talks to this module via get_connection()/get_cursor()/transaction()
+and writes SQLite-style "?" placeholders; they are translated to "%s" for
+PostgreSQL automatically. Cursors return positional (tuple) rows on BOTH backends
+so that row[0]-style access behaves identically.
+"""
 
 import os
 import re
 import sqlite3
+from contextlib import contextmanager
+
+SQLITE_FILE = "game_state.db"
 
 DB_URL = os.getenv("DATABASE_URL")
 USE_POSTGRES = False
+_pg = None
 
-# Only import psycopg2 if using PostgreSQL and it's available
 if DB_URL:
     try:
-        import psycopg2
-        from psycopg2.extras import RealDictCursor
+        import psycopg as _pg  # psycopg 3 — ships prebuilt wheels, supports modern Python
         USE_POSTGRES = True
+        # libpq accepts both schemes, but normalize the legacy form defensively.
+        if DB_URL.startswith("postgres://"):
+            DB_URL = "postgresql://" + DB_URL[len("postgres://"):]
     except ImportError:
-        print("⚠️ psycopg2 not installed, falling back to SQLite")
+        print("⚠️ psycopg (v3) not installed, falling back to SQLite")
         USE_POSTGRES = False
 
+
 def convert_sql(sql):
-    """Convert SQLite SQL (with ?) to PostgreSQL SQL (with %s)."""
+    """Translate SQLite-style ? placeholders to PostgreSQL %s placeholders."""
     if USE_POSTGRES:
-        # Replace ? with %s for PostgreSQL
-        return re.sub(r'\?', '%s', sql)
+        return re.sub(r"\?", "%s", sql)
     return sql
 
+
+class _Cursor:
+    """Wraps a DB-API cursor so callers can use ? placeholders on either backend.
+
+    Both sqlite3 and psycopg3 default cursors yield tuples, so positional row
+    access (row[0]) is uniform; this wrapper only rewrites the placeholder style.
+    """
+
+    def __init__(self, cur):
+        self._cur = cur
+
+    def execute(self, sql, params=None):
+        return self._cur.execute(convert_sql(sql), params if params is not None else ())
+
+    def executemany(self, sql, seq):
+        return self._cur.executemany(convert_sql(sql), seq)
+
+    def fetchone(self):
+        return self._cur.fetchone()
+
+    def fetchall(self):
+        return self._cur.fetchall()
+
+    @property
+    def rowcount(self):
+        return self._cur.rowcount
+
+    def close(self):
+        return self._cur.close()
+
+
 def get_connection():
-    """Get database connection (PostgreSQL or SQLite)."""
+    """Get a database connection (PostgreSQL or SQLite)."""
     if USE_POSTGRES:
-        conn = psycopg2.connect(DB_URL)
-        return conn
-    else:
-        return sqlite3.connect("game_state.db")
+        return _pg.connect(DB_URL)
+    conn = sqlite3.connect(SQLITE_FILE)
+    # Wait briefly instead of failing instantly if another connection holds a lock.
+    conn.execute("PRAGMA busy_timeout = 5000")
+    return conn
+
 
 def get_cursor(conn):
-    """Get cursor from connection."""
-    if USE_POSTGRES:
-        return conn.cursor(cursor_factory=RealDictCursor)
-    else:
-        conn.row_factory = sqlite3.Row
-        return conn.cursor()
+    """Get a placeholder-translating cursor that yields tuple rows on both backends."""
+    return _Cursor(conn.cursor())
 
-def execute_query(query, params=None):
-    """Execute a query and return results (helper for both databases)."""
+
+@contextmanager
+def transaction():
+    """Yield a wrapped cursor inside a transaction.
+
+    Commits on clean exit, rolls back on exception, and always closes the
+    connection. Use for every read or write so the active backend stays uniform.
+    """
     conn = get_connection()
     cursor = get_cursor(conn)
-
     try:
-        query = convert_sql(query)
-        if params:
-            cursor.execute(query, params)
-        else:
-            cursor.execute(query)
-
-        result = cursor.fetchall()
+        yield cursor
         conn.commit()
-        return result
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         cursor.close()
         conn.close()
 
-def execute_update(query, params=None):
-    """Execute an update/insert/delete query."""
-    conn = get_connection()
-    cursor = get_cursor(conn)
-
-    try:
-        query = convert_sql(query)
-        if params:
-            cursor.execute(query, params)
-        else:
-            cursor.execute(query)
-
-        conn.commit()
-        return cursor.rowcount
-    finally:
-        cursor.close()
-        conn.close()
 
 def init_tables():
     """Initialize database tables (both SQLite and PostgreSQL)."""
-    conn = get_connection()
-    cursor = get_cursor(conn)
-
-    try:
-        # Create tables (SQL works for both databases)
+    with transaction() as cursor:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS locations (
                 id TEXT PRIMARY KEY,
@@ -110,8 +134,15 @@ def init_tables():
             )
         """)
 
-        conn.commit()
-        print(f"✅ Database initialized ({'PostgreSQL' if USE_POSTGRES else 'SQLite'})")
-    finally:
-        cursor.close()
-        conn.close()
+    # Lightweight migration: add columns introduced after the original schema so
+    # a pre-existing database doesn't crash on a missing column. Each ALTER runs
+    # in its own transaction and is a harmless no-op if the column already exists.
+    for column in ("npc_encounters TEXT", "compromised_locations TEXT"):
+        try:
+            with transaction() as cursor:
+                cursor.execute(f"ALTER TABLE players ADD COLUMN {column}")
+            print(f"🔧 Migrated players: added column {column.split()[0]}")
+        except Exception:
+            pass  # Column already present.
+
+    print(f"✅ Database tables initialized ({'PostgreSQL' if USE_POSTGRES else 'SQLite'})")
