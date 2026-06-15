@@ -21,6 +21,7 @@ let audioContext;
 let mediaStream;
 let processor;
 let playerName = "Operative";  // Set from the callsign input on the main menu.
+let lastTtsEndTime = 0;        // When NOVA last stopped speaking (mic echo guard).
 
 // Unique per browser tab so concurrent players get isolated game state on the
 // backend. Sent on the WebSocket connect and every HUD /state poll.
@@ -287,6 +288,46 @@ function connectWebSocket() {
 // ---------------------------------------------------------
 // Audio Capture & VAD Processing
 // ---------------------------------------------------------
+
+// Downsample a Float32 PCM buffer from inputRate to outputRate (averaging).
+// No-op when the context already runs at (or below) the target rate. Safari
+// ignores the AudioContext sampleRate hint and captures at 44.1/48 kHz, so we
+// must resample to the 16 kHz that Deepgram is told to expect.
+function downsampleTo(buffer, inputRate, outputRate) {
+    if (!inputRate || outputRate >= inputRate) return buffer;
+    const ratio = inputRate / outputRate;
+    const newLen = Math.round(buffer.length / ratio);
+    const result = new Float32Array(newLen);
+    let offsetResult = 0;
+    let offsetBuffer = 0;
+    while (offsetResult < newLen) {
+        const nextOffset = Math.round((offsetResult + 1) * ratio);
+        let accum = 0, count = 0;
+        for (let i = offsetBuffer; i < nextOffset && i < buffer.length; i++) {
+            accum += buffer[i];
+            count++;
+        }
+        result[offsetResult] = count ? accum / count : 0;
+        offsetResult++;
+        offsetBuffer = nextOffset;
+    }
+    return result;
+}
+
+// Unlock speech synthesis from a user gesture. Safari refuses to run
+// programmatic speak() (e.g. from a WebSocket message) until it has been
+// triggered once by a real user interaction; a silent utterance does that.
+function primeSpeechSynthesis() {
+    if (!window.speechSynthesis) return;
+    try {
+        const warmup = new SpeechSynthesisUtterance(' ');
+        warmup.volume = 0;
+        window.speechSynthesis.speak(warmup);
+    } catch (e) {
+        console.warn('speechSynthesis prime failed:', e);
+    }
+}
+
 async function startMicrophone() {
     try {
         audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: SAMPLE_RATE });
@@ -296,7 +337,6 @@ async function startMicrophone() {
         processor = audioContext.createScriptProcessor(2048, 1, 1);
         
         let lastVadTime = 0;
-        let lastTtsEndTime = 0;
         const TTS_GRACE_PERIOD = 2000;  // Wait 2 seconds after TTS ends before accepting mic input
 
         processor.onaudioprocess = (e) => {
@@ -316,9 +356,12 @@ async function startMicrophone() {
                     lastVadTime = now;
                 }
 
-                const int16Array = new Int16Array(float32Array.length);
-                for (let i = 0; i < float32Array.length; i++) {
-                    let s = Math.max(-1, Math.min(1, float32Array[i]));
+                // Resample to 16 kHz before encoding so the PCM matches what the
+                // backend tells Deepgram (correct on Chrome AND Safari).
+                const pcm = downsampleTo(float32Array, audioContext.sampleRate, SAMPLE_RATE);
+                const int16Array = new Int16Array(pcm.length);
+                for (let i = 0; i < pcm.length; i++) {
+                    let s = Math.max(-1, Math.min(1, pcm[i]));
                     int16Array[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
                 }
 
@@ -361,6 +404,8 @@ function stopMicrophone() {
 // ---------------------------------------------------------
 if(connectBtn) {
     connectBtn.onclick = () => {
+        // Unlock TTS within this user gesture (required by Safari).
+        primeSpeechSynthesis();
         startMicrophone();
     };
 }
