@@ -156,3 +156,5 @@ When ready to deploy:
 4. Add `DATABASE_URL` to Render environment
 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for full production setup.
+
+***************************************************************************************
